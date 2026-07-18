@@ -1,0 +1,92 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.0'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.AURA'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('springdocOpenapiVersion', '3.0.3')
+	set('springDotenvVersion', '5.1.0')
+	set('googleApiClientVersion', '2.9.0')
+	set('googleOauthClientVersion', '1.39.0')
+	set('googleGmailApiVersion', 'v1-rev20260525-2.0.0')
+	set('googleDriveApiVersion', 'v3-rev20260712-2.0.0')
+	set('jjwtVersion', '0.13.0')
+	set('firebaseAdminVersion', '9.10.0')
+	set('onnxruntimeVersion', '1.27.0')
+	set('p6spyVersion', '2.0.1')
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+
+	// Swagger UI. API 문서 화면은 실행 자체를 막지 않으므로 기본 활성화한다.
+	implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocOpenapiVersion}"
+
+	// 로컬 개발에서 .env 파일을 Spring 환경변수 PropertySource로 읽기 위한 의존성이다.
+	// 운영에서는 Docker/EC2 환경변수를 주입하고, .env 파일은 Git에 포함하지 않는다.
+	developmentOnly platform("me.paulschwarz:spring-dotenv-bom:${springDotenvVersion}")
+	developmentOnly 'me.paulschwarz:springboot4-dotenv'
+
+	// Google API 호출 기반 의존성이다. 실제 API 호출 키와 토큰은 application.yaml의 환경변수로만 주입한다.
+	implementation "com.google.api-client:google-api-client:${googleApiClientVersion}"
+	implementation "com.google.oauth-client:google-oauth-client-jetty:${googleOauthClientVersion}"
+	implementation "com.google.apis:google-api-services-gmail:${googleGmailApiVersion}"
+	implementation "com.google.apis:google-api-services-drive:${googleDriveApiVersion}"
+
+	// JWT 토큰 생성/검증 의존성이다. JWT_SECRET은 환경변수로만 관리한다.
+	implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
+	runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
+	runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
+
+	// FCM 발송 의존성이다. 서비스 계정 키 파일 경로는 환경변수로만 관리한다.
+	implementation "com.google.firebase:firebase-admin:${firebaseAdminVersion}"
+
+	// Spring Boot 내부 ML 분류 라이브러리에서 ONNX 모델을 로드하기 위한 런타임이다.
+	implementation "com.microsoft.onnxruntime:onnxruntime:${onnxruntimeVersion}"
+
+	// 로컬 MySQL과 AWS RDS MySQL 연결을 위한 JPA/JDBC 의존성이다.
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'com.mysql:mysql-connector-j'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+
+	// Security 설정 클래스와 JWT 필터 구현 전에는 기본 인증이 전체 API를 막을 수 있어 주석 처리한다.
+	// implementation 'org.springframework.boot:spring-boot-starter-security'
+	// implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+	// testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+	// testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client-test'
+
+	// AURA 설계에서는 Spring AI 추상화와 운영 LLM/Transformer 추론을 사용하지 않으므로 비활성화한다.
+	// implementation 'org.springframework.ai:spring-ai-starter-model-transformers'
+
+	// DB 연결과 로그 마스킹 정책이 정리된 뒤 개발 프로필에서만 주석을 해제한다.
+	// implementation "com.github.gavlyukovskiy:p6spy-spring-boot-starter:${p6spyVersion}"
+
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

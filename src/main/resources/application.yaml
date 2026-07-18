@@ -1,0 +1,77 @@
+spring:
+  application:
+    name: AURA_Service
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: false
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+
+aura:
+  jwt:
+    secret: ${JWT_SECRET:}
+    access-token-expiration-seconds: 3600
+    refresh-token-expiration-seconds: 1209600
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    redirect-uri: ${GOOGLE_REDIRECT_URI:}
+  fcm:
+    credential-path: ${FCM_CREDENTIAL_PATH:}
+  ml:
+    classifier-version: aura-onnx-classifier-v1
+    model-path: ${AURA_ML_MODEL_PATH:models/aura-classifier-v1.onnx}
+    duplicate-detection-enabled: true
+
+# Spring Security OAuth Client를 사용할 때 build.gradle의 Security/OAuth 의존성과 함께 주석을 해제한다.
+# spring:
+#   security:
+#     oauth2:
+#       client:
+#         registration:
+#           google:
+#             client-id: ${GOOGLE_CLIENT_ID}
+#             client-secret: ${GOOGLE_CLIENT_SECRET}
+#             redirect-uri: ${GOOGLE_REDIRECT_URI}
+#             scope:
+#               - openid
+#               - email
+#               - profile
+#               - https://www.googleapis.com/auth/gmail.modify
+#               - https://www.googleapis.com/auth/drive
+
+logging:
+  level:
+    root: INFO
+    com.AURA: DEBUG
