@@ -55,7 +55,7 @@ aura:
   fcm:
     credential-path: ${FCM_CREDENTIAL_PATH:}
   ml:
-    classifier-version: aura-onnx-classifier-v1
+    classifier-version: ${AURA_ML_CLASSIFIER_VERSION:aura-onnx-classifier-v1}
     model-path: ${AURA_ML_MODEL_PATH:models/aura-classifier-v1.onnx}
     duplicate-detection-enabled: true
 
