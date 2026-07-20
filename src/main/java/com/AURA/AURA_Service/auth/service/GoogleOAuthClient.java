@@ -2,9 +2,10 @@ package com.AURA.AURA_Service.auth.service;
 
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -58,7 +59,8 @@ public class GoogleOAuthClient {
 			Thread.currentThread().interrupt();
 			throw new CustomException(ErrorCode.GOOGLE_AUTHENTICATION_FAILED);
 		} catch (IOException exception) {
-			throw new CustomException(ErrorCode.GOOGLE_AUTHENTICATION_FAILED);
+			LOGGER.warn("Google OAuth 응답 처리에 실패했습니다. endpoint={}", request.uri(), exception);
+			throw new CustomException(fallbackErrorCode);
 		}
 	}
 
@@ -89,6 +91,7 @@ public class GoogleOAuthClient {
 
 	private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 
+	@JsonIgnoreProperties(ignoreUnknown = true)
 	public record GoogleToken(
 		@JsonProperty("access_token") String accessToken,
 		@JsonProperty("expires_in") long expiresIn,
@@ -96,6 +99,7 @@ public class GoogleOAuthClient {
 		String scope
 	) { }
 
+	@JsonIgnoreProperties(ignoreUnknown = true)
 	public record GoogleUser(String sub, String email, String name, String picture) { }
 
 }
