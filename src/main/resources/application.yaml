@@ -8,6 +8,10 @@ spring:
     url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME}?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/auth-schema.sql
   jpa:
     open-in-view: false
     hibernate:
@@ -39,6 +43,7 @@ springdoc:
     path: /v3/api-docs
 
 aura:
+  token-encryption-key: ${TOKEN_ENCRYPTION_KEY:}
   jwt:
     secret: ${JWT_SECRET:}
     access-token-expiration-seconds: 3600
