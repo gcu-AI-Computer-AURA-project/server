@@ -3,6 +3,8 @@ package com.AURA.AURA_Service.auth.service;
 import com.AURA.AURA_Service.auth.domain.User;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -30,12 +32,26 @@ public class JwtTokenService {
 		return new TokenPair(create(user, "ACCESS", accessExpirationSeconds), create(user, "REFRESH", refreshExpirationSeconds));
 	}
 
+	public String getAccessTokenSubject(String token) {
+		try {
+			Claims claims = Jwts.parser().verifyWith(createKey()).build().parseSignedClaims(token).getPayload();
+			if (!"ACCESS".equals(claims.get("type", String.class))) throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
+			return claims.getSubject();
+		} catch (JwtException | IllegalArgumentException exception) {
+			throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
+		}
+	}
+
 	private String create(User user, String type, long expirationSeconds) {
 		if (secret.getBytes(StandardCharsets.UTF_8).length < 32) throw new CustomException(ErrorCode.INVALID_SERVER_CONFIGURATION);
 		Instant now = Instant.now();
-		SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
 		return Jwts.builder().subject(user.getUserId().toString()).claim("type", type)
-			.issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(expirationSeconds))).signWith(key).compact();
+			.issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(expirationSeconds))).signWith(createKey()).compact();
+	}
+
+	private SecretKey createKey() {
+		if (secret.getBytes(StandardCharsets.UTF_8).length < 32) throw new CustomException(ErrorCode.INVALID_SERVER_CONFIGURATION);
+		return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
 	}
 
 	public record TokenPair(String accessToken, String refreshToken) { }
