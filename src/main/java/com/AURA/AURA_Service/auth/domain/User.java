@@ -21,6 +21,7 @@ public class User {
 	@Column(name = "profile_image_url", length = 500) private String profileImageUrl;
 	@Enumerated(EnumType.STRING) @Column(name = "account_status", nullable = false) private AccountStatus accountStatus = AccountStatus.ACTIVE;
 	@Column(name = "last_login_at") private LocalDateTime lastLoginAt;
+	@Column(name = "created_at", insertable = false, updatable = false) private LocalDateTime createdAt;
 
 	protected User() { }
 
@@ -43,6 +44,9 @@ public class User {
 	public String getEmail() { return email; }
 	public String getDisplayName() { return displayName; }
 	public String getProfileImageUrl() { return profileImageUrl; }
+	public AccountStatus getAccountStatus() { return accountStatus; }
+	public LocalDateTime getLastLoginAt() { return lastLoginAt; }
+	public LocalDateTime getCreatedAt() { return createdAt; }
 
 	public enum AccountStatus { ACTIVE, DISCONNECTED, WITHDRAWN }
 }

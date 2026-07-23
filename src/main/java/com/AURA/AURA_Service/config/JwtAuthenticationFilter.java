@@ -20,9 +20,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private static final String BEARER_PREFIX = "Bearer ";
 
 	private final JwtTokenService jwtTokenService;
+	private final SecurityErrorResponseWriter securityErrorResponseWriter;
 
-	public JwtAuthenticationFilter(JwtTokenService jwtTokenService) {
+	public JwtAuthenticationFilter(JwtTokenService jwtTokenService, SecurityErrorResponseWriter securityErrorResponseWriter) {
 		this.jwtTokenService = jwtTokenService;
+		this.securityErrorResponseWriter = securityErrorResponseWriter;
 	}
 
 	@Override
@@ -30,10 +32,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		throws ServletException, IOException {
 		String header = request.getHeader(AUTHORIZATION_HEADER);
 		if (header != null && header.startsWith(BEARER_PREFIX)) {
-			String token = header.substring(BEARER_PREFIX.length());
-			String userId = jwtTokenService.getAccessTokenSubject(token);
-			UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userId, null, List.of());
-			SecurityContextHolder.getContext().setAuthentication(authentication);
+			try {
+				String token = header.substring(BEARER_PREFIX.length());
+				Long userId = jwtTokenService.getAccessTokenUserId(token);
+				UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userId.toString(), null, List.of());
+				SecurityContextHolder.getContext().setAuthentication(authentication);
+			} catch (CustomException exception) {
+				SecurityContextHolder.clearContext();
+				securityErrorResponseWriter.write(request, response, exception.getErrorCode());
+				return;
+			}
 		}
 		filterChain.doFilter(request, response);
 	}
