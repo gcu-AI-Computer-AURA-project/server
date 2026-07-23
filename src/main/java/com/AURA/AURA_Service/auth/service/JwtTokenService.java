@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class JwtTokenService {
+	private static final String ACCESS_TOKEN_TYPE = "ACCESS";
+	private static final String REFRESH_TOKEN_TYPE = "REFRESH";
+
 	private final String secret;
 	private final long accessExpirationSeconds;
 	private final long refreshExpirationSeconds;
@@ -29,15 +32,15 @@ public class JwtTokenService {
 	}
 
 	public TokenPair issue(User user) {
-		return new TokenPair(create(user, "ACCESS", accessExpirationSeconds), create(user, "REFRESH", refreshExpirationSeconds));
+		return new TokenPair(create(user, ACCESS_TOKEN_TYPE, accessExpirationSeconds), create(user, REFRESH_TOKEN_TYPE, refreshExpirationSeconds));
 	}
 
-	public String getAccessTokenSubject(String token) {
+	public Long getAccessTokenUserId(String token) {
 		try {
-			Claims claims = Jwts.parser().verifyWith(createKey()).build().parseSignedClaims(token).getPayload();
-			if (!"ACCESS".equals(claims.get("type", String.class))) throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
-			return claims.getSubject();
-		} catch (JwtException | IllegalArgumentException exception) {
+			Claims claims = parse(token);
+			validateTokenType(claims, ACCESS_TOKEN_TYPE);
+			return Long.valueOf(claims.getSubject());
+		} catch (JwtException | IllegalArgumentException | NullPointerException exception) {
 			throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
 		}
 	}
@@ -47,6 +50,16 @@ public class JwtTokenService {
 		Instant now = Instant.now();
 		return Jwts.builder().subject(user.getUserId().toString()).claim("type", type)
 			.issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(expirationSeconds))).signWith(createKey()).compact();
+	}
+
+	private Claims parse(String token) {
+		return Jwts.parser().verifyWith(createKey()).build().parseSignedClaims(token).getPayload();
+	}
+
+	private void validateTokenType(Claims claims, String expectedType) {
+		if (!expectedType.equals(claims.get("type", String.class))) {
+			throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
+		}
 	}
 
 	private SecretKey createKey() {
