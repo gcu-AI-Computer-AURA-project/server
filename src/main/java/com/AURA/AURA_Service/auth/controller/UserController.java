@@ -1,6 +1,7 @@
 package com.AURA.AURA_Service.auth.controller;
 
 import com.AURA.AURA_Service.auth.dto.UserMeResponse;
+import com.AURA.AURA_Service.auth.dto.UserPrivacyDataResponse;
 import com.AURA.AURA_Service.auth.service.UserService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,5 +24,11 @@ public class UserController {
 	@GetMapping("/me")
 	public ResponseEntity<ApiResponse<UserMeResponse>> getMe(@AuthenticationPrincipal String userId) {
 		return ResponseEntity.ok(ApiResponse.success(userService.getMe(Long.valueOf(userId))));
+	}
+
+	@Operation(summary = "개인정보 및 데이터 관리 조회", description = "현재 로그인한 사용자의 동의 상태와 데이터 관리 요약 정보를 조회합니다.")
+	@GetMapping("/me/privacy-data")
+	public ResponseEntity<ApiResponse<UserPrivacyDataResponse>> getPrivacyData(@AuthenticationPrincipal String userId) {
+		return ResponseEntity.ok(ApiResponse.success(userService.getPrivacyData(Long.valueOf(userId))));
 	}
 }

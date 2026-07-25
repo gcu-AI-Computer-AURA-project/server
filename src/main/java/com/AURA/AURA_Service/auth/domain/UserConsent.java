@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "user_consents")
@@ -20,10 +21,17 @@ public class UserConsent {
 	@Column(name = "is_metadata_only_agreed", nullable = false) private boolean isMetadataOnlyAgreed;
 	@Column(name = "is_user_approval_required_agreed", nullable = false) private boolean isUserApprovalRequiredAgreed;
 	@Column(name = "consent_version", nullable = false) private String consentVersion = "v1";
+	@Column(name = "consented_at") private LocalDateTime consentedAt;
 
 	protected UserConsent() { }
 	public UserConsent(User user) { this.user = user; }
 	public boolean isRequiredConsentCompleted() {
 		return isPrivacyAgreed && isAiAnalysisAgreed && isMetadataOnlyAgreed && isUserApprovalRequiredAgreed;
 	}
+	public boolean isPrivacyAgreed() { return isPrivacyAgreed; }
+	public boolean isAiAnalysisAgreed() { return isAiAnalysisAgreed; }
+	public boolean isMetadataOnlyAgreed() { return isMetadataOnlyAgreed; }
+	public boolean isUserApprovalRequiredAgreed() { return isUserApprovalRequiredAgreed; }
+	public String getConsentVersion() { return consentVersion; }
+	public LocalDateTime getConsentedAt() { return consentedAt; }
 }
