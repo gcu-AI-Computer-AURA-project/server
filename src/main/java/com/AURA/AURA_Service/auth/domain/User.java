@@ -21,6 +21,9 @@ public class User {
 	@Column(name = "profile_image_url", length = 500) private String profileImageUrl;
 	@Enumerated(EnumType.STRING) @Column(name = "account_status", nullable = false) private AccountStatus accountStatus = AccountStatus.ACTIVE;
 	@Column(name = "last_login_at") private LocalDateTime lastLoginAt;
+	@Column(name = "withdrawn_at") private LocalDateTime withdrawnAt;
+	@Column(name = "anonymized_at") private LocalDateTime anonymizedAt;
+	@Column(name = "anonymous_user_key") private String anonymousUserKey;
 	@Column(name = "created_at", insertable = false, updatable = false) private LocalDateTime createdAt;
 
 	protected User() { }
@@ -38,6 +41,17 @@ public class User {
 		this.profileImageUrl = profileImageUrl;
 		this.accountStatus = AccountStatus.ACTIVE;
 		this.lastLoginAt = LocalDateTime.now();
+	}
+
+	public void withdraw(String anonymousUserKey, LocalDateTime withdrawnAt) {
+		this.googleProviderId = null;
+		this.email = null;
+		this.displayName = null;
+		this.profileImageUrl = null;
+		this.accountStatus = AccountStatus.WITHDRAWN;
+		this.withdrawnAt = withdrawnAt;
+		this.anonymizedAt = withdrawnAt;
+		this.anonymousUserKey = anonymousUserKey;
 	}
 
 	public Long getUserId() { return userId; }

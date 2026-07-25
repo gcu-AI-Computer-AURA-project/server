@@ -23,6 +23,7 @@ public class OAuthToken {
 	@Column(name = "scope_text", columnDefinition = "TEXT") private String scopeText;
 	@Enumerated(EnumType.STRING) @Column(name = "token_status", nullable = false) private TokenStatus tokenStatus;
 	@Column(name = "last_refreshed_at") private LocalDateTime lastRefreshedAt;
+	@Column(name = "revoked_at") private LocalDateTime revokedAt;
 
 	protected OAuthToken() { }
 
@@ -38,6 +39,12 @@ public class OAuthToken {
 		this.scopeText = scopeText;
 		this.tokenStatus = TokenStatus.VALID;
 		this.lastRefreshedAt = LocalDateTime.now();
+	}
+
+	public void revoke(LocalDateTime revokedAt) {
+		this.encryptedRefreshToken = null;
+		this.tokenStatus = TokenStatus.REVOKED;
+		this.revokedAt = revokedAt;
 	}
 
 	public enum TokenStatus { VALID, EXPIRED, REVOKED, REFRESH_FAILED }

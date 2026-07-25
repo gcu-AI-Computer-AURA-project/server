@@ -15,6 +15,7 @@ public enum ErrorCode {
 	GOOGLE_OAUTH_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "GOOGLE-006", "Google OAuth 토큰 교환 요청 형식이 올바르지 않습니다."),
 	GOOGLE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "GOOGLE-007", "Google 계정 권한 동의가 거부되었습니다."),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER-001", "사용자를 찾을 수 없습니다."),
+	USER_ALREADY_WITHDRAWN(HttpStatus.CONFLICT, "USER-002", "이미 탈퇴 처리된 사용자입니다."),
 	SCAN_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-004", "기본 스캔 조건을 찾을 수 없습니다."),
 	DRIVE_FOLDER_REQUIRED(HttpStatus.BAD_REQUEST, "SCAN-005", "Drive 폴더 스캔에는 폴더 ID가 필요합니다."),
 	NOTIFICATION_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-001", "알림 설정을 찾을 수 없습니다."),
