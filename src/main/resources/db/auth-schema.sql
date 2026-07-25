@@ -85,3 +85,21 @@ CREATE TABLE IF NOT EXISTS scan_settings (
 	UNIQUE KEY uk_scan_settings_user_id (user_id),
 	CONSTRAINT fk_scan_settings_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_withdrawals (
+	withdrawal_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NOT NULL,
+	reason VARCHAR(500) NULL,
+	google_disconnected TINYINT(1) NOT NULL DEFAULT 0,
+	token_deleted TINYINT(1) NOT NULL DEFAULT 0,
+	scan_data_policy ENUM('DELETE', 'ANONYMIZE', 'KEEP') NOT NULL DEFAULT 'ANONYMIZE',
+	history_data_policy ENUM('DELETE', 'ANONYMIZE', 'KEEP') NOT NULL DEFAULT 'ANONYMIZE',
+	processed_status ENUM('PENDING', 'COMPLETED', 'FAILED') NOT NULL DEFAULT 'PENDING',
+	failure_reason VARCHAR(500) NULL,
+	withdrawn_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	processed_at DATETIME NULL,
+	PRIMARY KEY (withdrawal_id),
+	KEY idx_user_withdrawals_user_withdrawn_at (user_id, withdrawn_at),
+	KEY idx_user_withdrawals_processed_status (processed_status),
+	CONSTRAINT fk_user_withdrawals_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
