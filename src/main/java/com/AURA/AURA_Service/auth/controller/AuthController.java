@@ -2,6 +2,8 @@ package com.AURA.AURA_Service.auth.controller;
 
 import com.AURA.AURA_Service.auth.dto.GoogleLoginRequest;
 import com.AURA.AURA_Service.auth.dto.GoogleLoginResponse;
+import com.AURA.AURA_Service.auth.dto.TokenRefreshRequest;
+import com.AURA.AURA_Service.auth.dto.TokenRefreshResponse;
 import com.AURA.AURA_Service.auth.service.AuthService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,5 +27,11 @@ public class AuthController {
 	@PostMapping("/google/login")
 	public ResponseEntity<ApiResponse<GoogleLoginResponse>> googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
 		return ResponseEntity.ok(ApiResponse.success(authService.login(request)));
+	}
+
+	@Operation(summary = "AURA JWT 재발급", description = "AURA Refresh Token을 검증하고 새로운 AURA JWT를 발급합니다.")
+	@PostMapping("/token/refresh")
+	public ResponseEntity<ApiResponse<TokenRefreshResponse>> refresh(@Valid @RequestBody TokenRefreshRequest request) {
+		return ResponseEntity.ok(ApiResponse.success(authService.refresh(request)));
 	}
 }
