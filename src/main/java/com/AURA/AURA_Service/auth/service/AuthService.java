@@ -7,6 +7,7 @@ import com.AURA.AURA_Service.auth.domain.User.AccountStatus;
 import com.AURA.AURA_Service.auth.domain.UserConsent;
 import com.AURA.AURA_Service.auth.dto.GoogleLoginRequest;
 import com.AURA.AURA_Service.auth.dto.GoogleLoginResponse;
+import com.AURA.AURA_Service.auth.dto.LogoutResponse;
 import com.AURA.AURA_Service.auth.dto.TokenRefreshRequest;
 import com.AURA.AURA_Service.auth.dto.TokenRefreshResponse;
 import com.AURA.AURA_Service.auth.repository.NotificationSettingRepository;
@@ -91,6 +92,16 @@ public class AuthService {
 			throw new CustomException(ErrorCode.USER_ALREADY_WITHDRAWN);
 		}
 		return TokenRefreshResponse.from(jwtTokenService.issue(user), accessTokenExpirationSeconds);
+	}
+
+	@Transactional(readOnly = true)
+	public LogoutResponse logout(Long userId) {
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		if (user.getAccountStatus() == AccountStatus.WITHDRAWN) {
+			throw new CustomException(ErrorCode.USER_ALREADY_WITHDRAWN);
+		}
+		return LogoutResponse.loggedOut();
 	}
 
 	private void validateRedirectUri(String redirectUri) {
