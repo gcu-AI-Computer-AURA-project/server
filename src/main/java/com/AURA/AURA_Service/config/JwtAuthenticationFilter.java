@@ -50,6 +50,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	protected boolean shouldNotFilter(HttpServletRequest request) {
 		String path = request.getRequestURI();
 		return path.equals("/api/auth/google/login")
+			|| path.equals("/api/auth/token/refresh")
 			|| path.startsWith("/swagger-ui")
 			|| path.startsWith("/v3/api-docs")
 			|| path.equals("/actuator/health");
