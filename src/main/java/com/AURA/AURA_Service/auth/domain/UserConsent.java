@@ -25,9 +25,19 @@ public class UserConsent {
 
 	protected UserConsent() { }
 	public UserConsent(User user) { this.user = user; }
+	public void agree(boolean isPrivacyAgreed, boolean isAiAnalysisAgreed, boolean isMetadataOnlyAgreed,
+		boolean isUserApprovalRequiredAgreed, String consentVersion, LocalDateTime consentedAt) {
+		this.isPrivacyAgreed = isPrivacyAgreed;
+		this.isAiAnalysisAgreed = isAiAnalysisAgreed;
+		this.isMetadataOnlyAgreed = isMetadataOnlyAgreed;
+		this.isUserApprovalRequiredAgreed = isUserApprovalRequiredAgreed;
+		this.consentVersion = consentVersion;
+		this.consentedAt = consentedAt;
+	}
 	public boolean isRequiredConsentCompleted() {
 		return isPrivacyAgreed && isAiAnalysisAgreed && isMetadataOnlyAgreed && isUserApprovalRequiredAgreed;
 	}
+	public Long getConsentId() { return consentId; }
 	public boolean isPrivacyAgreed() { return isPrivacyAgreed; }
 	public boolean isAiAnalysisAgreed() { return isAiAnalysisAgreed; }
 	public boolean isMetadataOnlyAgreed() { return isMetadataOnlyAgreed; }
