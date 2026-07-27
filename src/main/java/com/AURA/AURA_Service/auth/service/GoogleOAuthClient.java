@@ -50,6 +50,16 @@ public class GoogleOAuthClient {
 		return send(request, GoogleUser.class, ErrorCode.GOOGLE_USER_INFO_FAILED);
 	}
 
+	public GoogleToken refreshAccessToken(String refreshToken) {
+		validateConfiguration();
+		String form = "refresh_token=" + encode(refreshToken) + "&client_id=" + encode(clientId)
+			+ "&client_secret=" + encode(clientSecret) + "&grant_type=refresh_token";
+		HttpRequest request = HttpRequest.newBuilder(TOKEN_URI)
+			.header("Content-Type", "application/x-www-form-urlencoded")
+			.POST(HttpRequest.BodyPublishers.ofString(form)).build();
+		return send(request, GoogleToken.class, ErrorCode.DRIVE_PERMISSION_REQUIRED);
+	}
+
 	private <T> T send(HttpRequest request, Class<T> responseType, ErrorCode fallbackErrorCode) {
 		try {
 			HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
