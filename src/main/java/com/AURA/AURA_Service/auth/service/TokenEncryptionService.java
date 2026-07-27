@@ -38,4 +38,22 @@ public class TokenEncryptionService {
 			throw new CustomException(ErrorCode.INVALID_SERVER_CONFIGURATION);
 		}
 	}
+
+	public String decrypt(String encryptedText) {
+		try {
+			byte[] key = Base64.getDecoder().decode(encodedKey);
+			if (key.length != 32) throw new IllegalArgumentException();
+			byte[] decoded = Base64.getDecoder().decode(encryptedText);
+			ByteBuffer byteBuffer = ByteBuffer.wrap(decoded);
+			byte[] iv = new byte[IV_LENGTH];
+			byteBuffer.get(iv);
+			byte[] encrypted = new byte[byteBuffer.remaining()];
+			byteBuffer.get(encrypted);
+			Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+			cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(TAG_LENGTH, iv));
+			return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+		} catch (GeneralSecurityException | IllegalArgumentException exception) {
+			throw new CustomException(ErrorCode.INVALID_SERVER_CONFIGURATION);
+		}
+	}
 }

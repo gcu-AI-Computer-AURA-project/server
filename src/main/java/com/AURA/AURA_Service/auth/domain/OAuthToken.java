@@ -47,5 +47,8 @@ public class OAuthToken {
 		this.revokedAt = revokedAt;
 	}
 
+	public String getEncryptedRefreshToken() { return encryptedRefreshToken; }
+	public TokenStatus getTokenStatus() { return tokenStatus; }
+
 	public enum TokenStatus { VALID, EXPIRED, REVOKED, REFRESH_FAILED }
 }

@@ -18,6 +18,8 @@ public enum ErrorCode {
 	USER_ALREADY_WITHDRAWN(HttpStatus.CONFLICT, "USER-002", "이미 탈퇴 처리된 사용자입니다."),
 	SCAN_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-004", "기본 스캔 조건을 찾을 수 없습니다."),
 	DRIVE_FOLDER_REQUIRED(HttpStatus.BAD_REQUEST, "SCAN-005", "Drive 폴더 스캔에는 폴더 ID가 필요합니다."),
+	DRIVE_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-002", "Drive 권한이 필요합니다."),
+	GOOGLE_DRIVE_FOLDER_LIST_FAILED(HttpStatus.BAD_GATEWAY, "DRIVE-001", "Google Drive 폴더 목록을 조회할 수 없습니다."),
 	NOTIFICATION_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-001", "알림 설정을 찾을 수 없습니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "S001", "서버 내부 오류가 발생했습니다.");
 
