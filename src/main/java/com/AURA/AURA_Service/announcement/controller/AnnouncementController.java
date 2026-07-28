@@ -3,6 +3,7 @@ package com.AURA.AURA_Service.announcement.controller;
 import com.AURA.AURA_Service.announcement.domain.AnnouncementCategory;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementDetailResponse;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementPageResponse;
+import com.AURA.AURA_Service.announcement.dto.AnnouncementReadResponse;
 import com.AURA.AURA_Service.announcement.service.AnnouncementService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,5 +39,12 @@ public class AnnouncementController {
 	public ResponseEntity<ApiResponse<AnnouncementDetailResponse>> getDetail(@AuthenticationPrincipal String userId,
 		@PathVariable Long announcementId) {
 		return ResponseEntity.ok(ApiResponse.success(announcementService.getDetail(Long.valueOf(userId), announcementId)));
+	}
+
+	@Operation(summary = "공지사항 읽음 처리", description = "사용자가 확인한 공지사항의 읽음 기록을 저장합니다.")
+	@PostMapping("/{announcementId}/read")
+	public ResponseEntity<ApiResponse<AnnouncementReadResponse>> read(@AuthenticationPrincipal String userId,
+		@PathVariable Long announcementId) {
+		return ResponseEntity.ok(ApiResponse.success(announcementService.read(Long.valueOf(userId), announcementId)));
 	}
 }
