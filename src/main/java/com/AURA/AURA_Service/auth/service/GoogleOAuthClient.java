@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +24,7 @@ public class GoogleOAuthClient {
 	private static final Logger LOGGER = LoggerFactory.getLogger(GoogleOAuthClient.class);
 	private static final URI TOKEN_URI = URI.create("https://oauth2.googleapis.com/token");
 	private static final URI USER_INFO_URI = URI.create("https://openidconnect.googleapis.com/v1/userinfo");
+	private static final String AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 	private final HttpClient httpClient = HttpClient.newHttpClient();
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final String clientId;
@@ -58,6 +60,19 @@ public class GoogleOAuthClient {
 			.header("Content-Type", "application/x-www-form-urlencoded")
 			.POST(HttpRequest.BodyPublishers.ofString(form)).build();
 		return send(request, GoogleToken.class, ErrorCode.DRIVE_PERMISSION_REQUIRED);
+	}
+
+	public String buildAuthorizationUrl(String redirectUri, List<String> scopes) {
+		validateConfiguration();
+		String scopeText = String.join(" ", scopes);
+		return AUTHORIZATION_ENDPOINT
+			+ "?client_id=" + encode(clientId)
+			+ "&redirect_uri=" + encode(redirectUri)
+			+ "&response_type=code"
+			+ "&scope=" + encode(scopeText)
+			+ "&access_type=offline"
+			+ "&prompt=consent"
+			+ "&include_granted_scopes=true";
 	}
 
 	private <T> T send(HttpRequest request, Class<T> responseType, ErrorCode fallbackErrorCode) {
