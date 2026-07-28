@@ -35,6 +35,7 @@ public class AuthService {
 	private final UserConsentRepository userConsentRepository;
 	private final NotificationSettingRepository notificationSettingRepository;
 	private final ScanSettingRepository scanSettingRepository;
+	private final GooglePermissionService googlePermissionService;
 	private final String configuredRedirectUri;
 	private final long accessTokenExpirationSeconds;
 
@@ -42,7 +43,8 @@ public class AuthService {
 		JwtTokenService jwtTokenService, UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
 		UserConsentRepository userConsentRepository, NotificationSettingRepository notificationSettingRepository,
 		ScanSettingRepository scanSettingRepository, @Value("${aura.google.redirect-uri:}") String configuredRedirectUri,
-		@Value("${aura.jwt.access-token-expiration-seconds}") long accessTokenExpirationSeconds) {
+		@Value("${aura.jwt.access-token-expiration-seconds}") long accessTokenExpirationSeconds,
+		GooglePermissionService googlePermissionService) {
 		this.googleOAuthClient = googleOAuthClient;
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.jwtTokenService = jwtTokenService;
@@ -51,6 +53,7 @@ public class AuthService {
 		this.userConsentRepository = userConsentRepository;
 		this.notificationSettingRepository = notificationSettingRepository;
 		this.scanSettingRepository = scanSettingRepository;
+		this.googlePermissionService = googlePermissionService;
 		this.configuredRedirectUri = configuredRedirectUri;
 		this.accessTokenExpirationSeconds = accessTokenExpirationSeconds;
 	}
@@ -71,6 +74,7 @@ public class AuthService {
 		String encryptedRefreshToken = googleToken.refreshToken() == null ? null : tokenEncryptionService.encrypt(googleToken.refreshToken());
 		oauthToken.update(encryptedRefreshToken, googleToken.expiresIn(), googleToken.scope());
 		oauthTokenRepository.save(oauthToken);
+		googlePermissionService.syncConnectedPermissions(activeUser, googleToken.scope());
 
 		UserConsent consent = userConsentRepository.findByUser(activeUser).orElseGet(() -> userConsentRepository.save(new UserConsent(activeUser)));
 		if (isNewUser) notificationSettingRepository.save(new NotificationSetting(activeUser));

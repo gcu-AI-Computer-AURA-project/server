@@ -26,13 +26,16 @@ public class UserService {
 	private final UserConsentRepository userConsentRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
 	private final UserWithdrawalRepository userWithdrawalRepository;
+	private final GooglePermissionService googlePermissionService;
 
 	public UserService(UserRepository userRepository, UserConsentRepository userConsentRepository,
-		OAuthTokenRepository oauthTokenRepository, UserWithdrawalRepository userWithdrawalRepository) {
+		OAuthTokenRepository oauthTokenRepository, UserWithdrawalRepository userWithdrawalRepository,
+		GooglePermissionService googlePermissionService) {
 		this.userRepository = userRepository;
 		this.userConsentRepository = userConsentRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
 		this.userWithdrawalRepository = userWithdrawalRepository;
+		this.googlePermissionService = googlePermissionService;
 	}
 
 	@Transactional(readOnly = true)
@@ -66,8 +69,9 @@ public class UserService {
 			now
 		));
 		boolean tokenDeleted = revokeToken(user, now);
+		boolean googleDisconnected = googlePermissionService.disconnectAll(user, now);
 		user.withdraw(createAnonymousUserKey(), now);
-		withdrawal.complete(tokenDeleted, tokenDeleted, now);
+		withdrawal.complete(googleDisconnected || tokenDeleted, tokenDeleted, now);
 		return UserWithdrawalResponse.from(withdrawal);
 	}
 
