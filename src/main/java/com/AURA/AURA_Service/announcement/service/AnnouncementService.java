@@ -2,6 +2,8 @@ package com.AURA.AURA_Service.announcement.service;
 
 import com.AURA.AURA_Service.announcement.domain.Announcement;
 import com.AURA.AURA_Service.announcement.domain.AnnouncementCategory;
+import com.AURA.AURA_Service.announcement.domain.AnnouncementRead;
+import com.AURA.AURA_Service.announcement.dto.AnnouncementDetailResponse;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementListItemResponse;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementPageResponse;
 import com.AURA.AURA_Service.announcement.repository.AnnouncementReadRepository;
@@ -10,6 +12,7 @@ import com.AURA.AURA_Service.auth.domain.User;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -50,6 +53,16 @@ public class AnnouncementService {
 		return AnnouncementPageResponse.from(announcements, content);
 	}
 
+	@Transactional(readOnly = true)
+	public AnnouncementDetailResponse getDetail(Long userId, Long announcementId) {
+		User user = findUser(userId);
+		Announcement announcement = findAnnouncement(announcementId);
+		LocalDateTime readAt = announcementReadRepository.findByUserAndAnnouncement(user, announcement)
+			.map(AnnouncementRead::getReadAt)
+			.orElse(null);
+		return AnnouncementDetailResponse.from(announcement, readAt);
+	}
+
 	private Pageable createPageable(int page, int size) {
 		if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
@@ -69,5 +82,10 @@ public class AnnouncementService {
 
 	private User findUser(Long userId) {
 		return userRepository.findById(userId).orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+	}
+
+	private Announcement findAnnouncement(Long announcementId) {
+		return announcementRepository.findById(announcementId)
+			.orElseThrow(() -> new CustomException(ErrorCode.ANNOUNCEMENT_NOT_FOUND));
 	}
 }

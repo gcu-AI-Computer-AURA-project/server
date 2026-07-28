@@ -1,6 +1,7 @@
 package com.AURA.AURA_Service.announcement.controller;
 
 import com.AURA.AURA_Service.announcement.domain.AnnouncementCategory;
+import com.AURA.AURA_Service.announcement.dto.AnnouncementDetailResponse;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementPageResponse;
 import com.AURA.AURA_Service.announcement.service.AnnouncementService;
 import com.AURA.AURA_Service.common.ApiResponse;
@@ -8,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,5 +30,12 @@ public class AnnouncementController {
 		@RequestParam(defaultValue = "0") int page,
 		@RequestParam(defaultValue = "20") int size) {
 		return ResponseEntity.ok(ApiResponse.success(announcementService.getList(Long.valueOf(userId), category, page, size)));
+	}
+
+	@Operation(summary = "공지사항 상세 조회", description = "공지사항 본문과 사용자의 읽음 상태를 조회합니다.")
+	@GetMapping("/{announcementId}")
+	public ResponseEntity<ApiResponse<AnnouncementDetailResponse>> getDetail(@AuthenticationPrincipal String userId,
+		@PathVariable Long announcementId) {
+		return ResponseEntity.ok(ApiResponse.success(announcementService.getDetail(Long.valueOf(userId), announcementId)));
 	}
 }
