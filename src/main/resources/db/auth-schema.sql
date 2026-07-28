@@ -86,6 +86,32 @@ CREATE TABLE IF NOT EXISTS scan_settings (
 	CONSTRAINT fk_scan_settings_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS announcements (
+	announcement_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	title VARCHAR(200) NOT NULL,
+	category ENUM('POLICY', 'SERVICE', 'FEATURE') NOT NULL DEFAULT 'SERVICE',
+	content TEXT NOT NULL,
+	is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+	published_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (announcement_id),
+	KEY idx_announcements_category (category),
+	KEY idx_announcements_pinned_published_at (is_pinned, published_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS announcement_reads (
+	read_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NOT NULL,
+	announcement_id BIGINT UNSIGNED NOT NULL,
+	read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (read_id),
+	UNIQUE KEY uk_announcement_reads_user_announcement (user_id, announcement_id),
+	KEY idx_announcement_reads_announcement_id (announcement_id),
+	CONSTRAINT fk_announcement_reads_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
+	CONSTRAINT fk_announcement_reads_announcement FOREIGN KEY (announcement_id) REFERENCES announcements (announcement_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS user_withdrawals (
 	withdrawal_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	user_id BIGINT UNSIGNED NOT NULL,
