@@ -48,6 +48,7 @@ public class OAuthToken {
 	}
 
 	public String getEncryptedRefreshToken() { return encryptedRefreshToken; }
+	public String getScopeText() { return scopeText; }
 	public TokenStatus getTokenStatus() { return tokenStatus; }
 
 	public enum TokenStatus { VALID, EXPIRED, REVOKED, REFRESH_FAILED }
