@@ -6,6 +6,7 @@ import com.AURA.AURA_Service.announcement.domain.AnnouncementRead;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementDetailResponse;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementListItemResponse;
 import com.AURA.AURA_Service.announcement.dto.AnnouncementPageResponse;
+import com.AURA.AURA_Service.announcement.dto.AnnouncementReadResponse;
 import com.AURA.AURA_Service.announcement.repository.AnnouncementReadRepository;
 import com.AURA.AURA_Service.announcement.repository.AnnouncementRepository;
 import com.AURA.AURA_Service.auth.domain.User;
@@ -61,6 +62,15 @@ public class AnnouncementService {
 			.map(AnnouncementRead::getReadAt)
 			.orElse(null);
 		return AnnouncementDetailResponse.from(announcement, readAt);
+	}
+
+	@Transactional
+	public AnnouncementReadResponse read(Long userId, Long announcementId) {
+		User user = findUser(userId);
+		Announcement announcement = findAnnouncement(announcementId);
+		AnnouncementRead announcementRead = announcementReadRepository.findByUserAndAnnouncement(user, announcement)
+			.orElseGet(() -> announcementReadRepository.save(new AnnouncementRead(user, announcement)));
+		return new AnnouncementReadResponse(announcement.getAnnouncementId(), announcementRead.getReadAt());
 	}
 
 	private Pageable createPageable(int page, int size) {
