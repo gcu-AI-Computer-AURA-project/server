@@ -48,6 +48,12 @@ public class GooglePermission {
 		this.lastCheckedAt = checkedAt;
 	}
 
+	public void requireReconnect(String scopeText, LocalDateTime checkedAt) {
+		this.permissionStatus = PermissionStatus.RECONNECT_REQUIRED;
+		this.scopeText = scopeText;
+		this.lastCheckedAt = checkedAt;
+	}
+
 	public void disconnect(LocalDateTime disconnectedAt) {
 		this.permissionStatus = PermissionStatus.DISCONNECTED;
 		this.disconnectedAt = disconnectedAt;
