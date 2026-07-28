@@ -1,14 +1,18 @@
 package com.AURA.AURA_Service.auth.controller;
 
 import com.AURA.AURA_Service.auth.dto.GooglePermissionRecheckResponse;
+import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlRequest;
+import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionResponse;
 import com.AURA.AURA_Service.auth.service.GooglePermissionService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,5 +35,12 @@ public class GooglePermissionController {
 	@PostMapping("/recheck")
 	public ResponseEntity<ApiResponse<GooglePermissionRecheckResponse>> recheck(@AuthenticationPrincipal String userId) {
 		return ResponseEntity.ok(ApiResponse.success(googlePermissionService.recheck(Long.valueOf(userId))));
+	}
+
+	@Operation(summary = "Google 권한 재연결 URL 발급", description = "요청한 Google 서비스 권한 재연결을 위한 OAuth 인증 URL을 발급합니다.")
+	@PostMapping("/reconnect-url")
+	public ResponseEntity<ApiResponse<GooglePermissionReconnectUrlResponse>> createReconnectUrl(
+		@Valid @RequestBody GooglePermissionReconnectUrlRequest request) {
+		return ResponseEntity.ok(ApiResponse.success(googlePermissionService.createReconnectUrl(request)));
 	}
 }
