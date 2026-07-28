@@ -54,6 +54,10 @@ public class User {
 		this.anonymousUserKey = anonymousUserKey;
 	}
 
+	public void disconnectGoogle() {
+		this.accountStatus = AccountStatus.DISCONNECTED;
+	}
+
 	public Long getUserId() { return userId; }
 	public String getEmail() { return email; }
 	public String getDisplayName() { return displayName; }

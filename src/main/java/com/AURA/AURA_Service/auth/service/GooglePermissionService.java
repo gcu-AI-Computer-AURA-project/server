@@ -6,6 +6,8 @@ import com.AURA.AURA_Service.auth.domain.GooglePermission.ServiceType;
 import com.AURA.AURA_Service.auth.domain.OAuthToken;
 import com.AURA.AURA_Service.auth.domain.OAuthToken.TokenStatus;
 import com.AURA.AURA_Service.auth.domain.User;
+import com.AURA.AURA_Service.auth.domain.User.AccountStatus;
+import com.AURA.AURA_Service.auth.dto.GoogleConnectionDisconnectResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionRecheckResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlRequest;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlResponse;
@@ -80,6 +82,20 @@ public class GooglePermissionService {
 		List<String> scopes = createScopes(request.serviceTypes());
 		String authorizationUrl = googleOAuthClient.buildAuthorizationUrl(request.redirectUri(), scopes);
 		return new GooglePermissionReconnectUrlResponse(authorizationUrl, RECONNECT_URL_EXPIRES_IN);
+	}
+
+	@Transactional
+	public GoogleConnectionDisconnectResponse disconnectConnection(Long userId) {
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		if (user.getAccountStatus() == AccountStatus.WITHDRAWN) {
+			throw new CustomException(ErrorCode.USER_ALREADY_WITHDRAWN);
+		}
+		LocalDateTime disconnectedAt = LocalDateTime.now();
+		oauthTokenRepository.findByUser(user).ifPresent(token -> token.revoke(disconnectedAt));
+		disconnectAll(user, disconnectedAt);
+		user.disconnectGoogle();
+		return GoogleConnectionDisconnectResponse.disconnected();
 	}
 
 	@Transactional
