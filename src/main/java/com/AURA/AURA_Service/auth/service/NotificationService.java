@@ -7,11 +7,13 @@ import com.AURA.AURA_Service.auth.dto.FcmTokenRequest;
 import com.AURA.AURA_Service.auth.dto.FcmTokenResponse;
 import com.AURA.AURA_Service.auth.dto.NotificationListItemResponse;
 import com.AURA.AURA_Service.auth.dto.NotificationPageResponse;
+import com.AURA.AURA_Service.auth.dto.NotificationReadResponse;
 import com.AURA.AURA_Service.auth.repository.FcmTokenRepository;
 import com.AURA.AURA_Service.auth.repository.NotificationRepository;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -56,6 +58,15 @@ public class NotificationService {
 			.map(NotificationListItemResponse::from)
 			.toList();
 		return NotificationPageResponse.from(notifications, content);
+	}
+
+	@Transactional
+	public NotificationReadResponse read(Long userId, Long notificationId) {
+		User user = findUser(userId);
+		Notification notification = notificationRepository.findByNotificationIdAndUser(notificationId, user)
+			.orElseThrow(() -> new CustomException(ErrorCode.NOTIFICATION_NOT_FOUND));
+		notification.markAsRead(LocalDateTime.now());
+		return new NotificationReadResponse(notification.getNotificationId(), notification.isRead(), notification.getReadAt());
 	}
 
 	private Pageable createPageable(int page, int size) {

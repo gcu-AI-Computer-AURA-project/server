@@ -21,6 +21,7 @@ public enum ErrorCode {
 	DRIVE_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-002", "Drive 권한이 필요합니다."),
 	GOOGLE_DRIVE_FOLDER_LIST_FAILED(HttpStatus.BAD_GATEWAY, "DRIVE-001", "Google Drive 폴더 목록을 조회할 수 없습니다."),
 	NOTIFICATION_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-001", "알림 설정을 찾을 수 없습니다."),
+	NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-002", "알림을 찾을 수 없습니다."),
 	ANNOUNCEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ANNOUNCEMENT-001", "공지사항을 찾을 수 없습니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "S001", "서버 내부 오류가 발생했습니다.");
 

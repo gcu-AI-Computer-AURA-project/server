@@ -31,6 +31,23 @@ public class Notification {
 
 	protected Notification() { }
 
+	/**
+	 * 알림 읽음 처리 메소드
+	 * 읽지 않은 알림을 사용자가 확인한 시간으로 기록한다.
+	 *
+	 * @return : 없음
+	 * @since : 2026.07.29
+	 * @version : 0.0.1
+	 * @author : 정효림
+	 */
+	public void markAsRead(LocalDateTime readAt) {
+		if (this.isRead) {
+			return;
+		}
+		this.isRead = true;
+		this.readAt = readAt;
+	}
+
 	public Long getNotificationId() { return notificationId; }
 	public Long getScanJobId() { return scanJobId; }
 	public Long getCleanupJobId() { return cleanupJobId; }
@@ -40,4 +57,5 @@ public class Notification {
 	public TargetScreen getTargetScreen() { return targetScreen; }
 	public boolean isRead() { return isRead; }
 	public LocalDateTime getSentAt() { return sentAt; }
+	public LocalDateTime getReadAt() { return readAt; }
 }
