@@ -3,6 +3,7 @@ package com.AURA.AURA_Service.auth.controller;
 import com.AURA.AURA_Service.auth.dto.FcmTokenRequest;
 import com.AURA.AURA_Service.auth.dto.FcmTokenResponse;
 import com.AURA.AURA_Service.auth.dto.NotificationPageResponse;
+import com.AURA.AURA_Service.auth.dto.NotificationReadResponse;
 import com.AURA.AURA_Service.auth.service.NotificationService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,5 +42,12 @@ public class NotificationController {
 		@RequestParam(defaultValue = "20") int size,
 		@RequestParam(name = "unread_only", defaultValue = "false") boolean unreadOnly) {
 		return ResponseEntity.ok(ApiResponse.success(notificationService.getList(Long.valueOf(userId), page, size, unreadOnly)));
+	}
+
+	@Operation(summary = "알림 읽음 처리", description = "사용자가 확인한 알림을 읽음 상태로 변경합니다.")
+	@PatchMapping("/{notificationId}/read")
+	public ResponseEntity<ApiResponse<NotificationReadResponse>> read(@AuthenticationPrincipal String userId,
+		@PathVariable Long notificationId) {
+		return ResponseEntity.ok(ApiResponse.success(notificationService.read(Long.valueOf(userId), notificationId)));
 	}
 }
