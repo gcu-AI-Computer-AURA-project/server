@@ -95,6 +95,24 @@ CREATE TABLE IF NOT EXISTS fcm_tokens (
 	CONSTRAINT fk_fcm_tokens_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS notifications (
+	notification_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NULL,
+	scan_job_id BIGINT UNSIGNED NULL,
+	cleanup_job_id BIGINT UNSIGNED NULL,
+	notification_type ENUM('SCAN_COMPLETED', 'SCAN_RECOMMENDED', 'DRIVE_STORAGE_LOW', 'CLEANUP_COMPLETED') NOT NULL,
+	title VARCHAR(150) NOT NULL,
+	message VARCHAR(500) NOT NULL,
+	target_screen ENUM('HOME', 'ANALYSIS_SUMMARY', 'STATISTICS', 'CLEANUP_RESULT') NOT NULL DEFAULT 'HOME',
+	is_read TINYINT(1) NOT NULL DEFAULT 0,
+	sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	read_at DATETIME NULL,
+	PRIMARY KEY (notification_id),
+	KEY idx_notifications_user_sent_at (user_id, sent_at),
+	KEY idx_notifications_notification_type (notification_type),
+	CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS scan_settings (
 	setting_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	user_id BIGINT UNSIGNED NOT NULL,

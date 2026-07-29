@@ -2,15 +2,18 @@ package com.AURA.AURA_Service.auth.controller;
 
 import com.AURA.AURA_Service.auth.dto.FcmTokenRequest;
 import com.AURA.AURA_Service.auth.dto.FcmTokenResponse;
+import com.AURA.AURA_Service.auth.dto.NotificationPageResponse;
 import com.AURA.AURA_Service.auth.service.NotificationService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -27,5 +30,14 @@ public class NotificationController {
 	public ResponseEntity<ApiResponse<FcmTokenResponse>> saveFcmToken(@AuthenticationPrincipal String userId,
 		@Valid @RequestBody FcmTokenRequest request) {
 		return ResponseEntity.ok(ApiResponse.success(notificationService.saveFcmToken(Long.valueOf(userId), request)));
+	}
+
+	@Operation(summary = "알림 목록 조회", description = "사용자에게 발송된 알림 이력을 최신순으로 조회합니다.")
+	@GetMapping
+	public ResponseEntity<ApiResponse<NotificationPageResponse>> getList(@AuthenticationPrincipal String userId,
+		@RequestParam(defaultValue = "0") int page,
+		@RequestParam(defaultValue = "20") int size,
+		@RequestParam(name = "unread_only", defaultValue = "false") boolean unreadOnly) {
+		return ResponseEntity.ok(ApiResponse.success(notificationService.getList(Long.valueOf(userId), page, size, unreadOnly)));
 	}
 }
