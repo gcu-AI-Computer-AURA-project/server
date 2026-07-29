@@ -64,6 +64,21 @@ CREATE TABLE IF NOT EXISTS notification_settings (
 	CONSTRAINT fk_notification_settings_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS fcm_tokens (
+	fcm_token_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NOT NULL,
+	device_identifier VARCHAR(150) NULL,
+	fcm_token VARCHAR(500) NOT NULL,
+	is_active TINYINT(1) NOT NULL DEFAULT 1,
+	last_used_at DATETIME NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (fcm_token_id),
+	UNIQUE KEY uk_fcm_tokens_fcm_token (fcm_token),
+	KEY idx_fcm_tokens_user_active (user_id, is_active),
+	CONSTRAINT fk_fcm_tokens_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS scan_settings (
 	setting_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	user_id BIGINT UNSIGNED NOT NULL,
