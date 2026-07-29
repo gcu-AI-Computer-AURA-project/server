@@ -48,7 +48,12 @@ public class FcmToken {
 		this.isActive = true;
 	}
 
+	public void markUsedAt(LocalDateTime lastUsedAt) {
+		this.lastUsedAt = lastUsedAt;
+	}
+
 	public Long getFcmTokenId() { return fcmTokenId; }
+	public String getFcmToken() { return fcmToken; }
 	public boolean isActive() { return isActive; }
 	public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

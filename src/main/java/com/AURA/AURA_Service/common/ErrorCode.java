@@ -20,6 +20,7 @@ public enum ErrorCode {
 	DRIVE_FOLDER_REQUIRED(HttpStatus.BAD_REQUEST, "SCAN-005", "Drive 폴더 스캔에는 폴더 ID가 필요합니다."),
 	DRIVE_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-002", "Drive 권한이 필요합니다."),
 	GOOGLE_DRIVE_FOLDER_LIST_FAILED(HttpStatus.BAD_GATEWAY, "DRIVE-001", "Google Drive 폴더 목록을 조회할 수 없습니다."),
+	FCM_SEND_FAILED(HttpStatus.BAD_GATEWAY, "FCM-001", "FCM 알림 발송에 실패했습니다."),
 	NOTIFICATION_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-001", "알림 설정을 찾을 수 없습니다."),
 	NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-002", "알림을 찾을 수 없습니다."),
 	ANNOUNCEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ANNOUNCEMENT-001", "공지사항을 찾을 수 없습니다."),
