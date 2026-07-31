@@ -54,10 +54,15 @@ aura:
     redirect-uri: ${GOOGLE_REDIRECT_URI:}
   fcm:
     credential-path: ${FCM_CREDENTIAL_PATH:}
-  ml:
-    classifier-version: ${AURA_ML_CLASSIFIER_VERSION:aura-onnx-classifier-v1}
-    model-path: ${AURA_ML_MODEL_PATH:models/aura-classifier-v1.onnx}
-    duplicate-detection-enabled: true
+  ai:
+    provider: ${AURA_AI_PROVIDER:VERTEX_GEMINI}
+    analysis-enabled: ${AURA_AI_ANALYSIS_ENABLED:true}
+    batch-size: ${AURA_AI_BATCH_SIZE:20}
+    request-timeout-seconds: ${AURA_AI_REQUEST_TIMEOUT_SECONDS:30}
+    vertex:
+      api-key: ${VERTEX_API_KEY:}
+      api-url: ${VERTEX_API_URL:}
+      model: ${VERTEX_GEMINI_MODEL:gemini-2.5-flash-lite}
 
 # Spring Security OAuth Client를 사용할 때 build.gradle의 Security/OAuth 의존성과 함께 주석을 해제한다.
 # spring:
