@@ -26,7 +26,6 @@ ext {
 	set('googleDriveApiVersion', 'v3-rev20260712-2.0.0')
 	set('jjwtVersion', '0.13.0')
 	set('firebaseAdminVersion', '9.10.0')
-	set('onnxruntimeVersion', '1.27.0')
 	set('p6spyVersion', '2.0.1')
 }
 
@@ -58,18 +57,13 @@ dependencies {
 	// FCM 발송 의존성이다. 서비스 계정 키 파일 경로는 환경변수로만 관리한다.
 	implementation "com.google.firebase:firebase-admin:${firebaseAdminVersion}"
 
-	// Spring Boot 내부 ML 분류 라이브러리에서 ONNX 모델을 로드하기 위한 런타임이다.
-	implementation "com.microsoft.onnxruntime:onnxruntime:${onnxruntimeVersion}"
-
 	// 로컬 MySQL과 AWS RDS MySQL 연결을 위한 JPA/JDBC 의존성이다.
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 
-	// Security 설정 클래스와 JWT 필터 구현 전에는 기본 인증이 전체 API를 막을 수 있어 주석 처리한다.
-	// implementation 'org.springframework.boot:spring-boot-starter-security'
+	// Spring Security OAuth Client 방식으로 전환할 때만 주석을 해제한다.
 	// implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
-	// testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	// testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client-test'
 
 	// AURA 설계에서는 Spring AI 추상화와 운영 LLM/Transformer 추론을 사용하지 않으므로 비활성화한다.
@@ -83,6 +77,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
