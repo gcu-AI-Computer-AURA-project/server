@@ -11,6 +11,8 @@ import com.AURA.AURA_Service.auth.service.GoogleOAuthClient.GoogleToken;
 import com.AURA.AURA_Service.auth.service.TokenEncryptionService;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import com.google.api.client.googleapis.json.GoogleJsonError;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -108,8 +110,10 @@ public class GoogleMetadataCollector {
 				pageToken = response.getNextPageToken();
 			} while (pageToken != null);
 			return items;
+		} catch (GoogleJsonResponseException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED, createGoogleApiErrorMessage("Gmail", exception));
 		} catch (IOException exception) {
-			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED);
+			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED, "Gmail API 요청 실패: " + exception.getMessage());
 		}
 	}
 
@@ -120,9 +124,26 @@ public class GoogleMetadataCollector {
 				return collectDriveFolder(drive, condition);
 			}
 			return collectDriveAll(drive);
+		} catch (GoogleJsonResponseException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED, createGoogleApiErrorMessage("Drive", exception));
 		} catch (IOException exception) {
-			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED);
+			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED, "Google Drive API 요청 실패: " + exception.getMessage());
 		}
+	}
+
+	private String createGoogleApiErrorMessage(String serviceName, GoogleJsonResponseException exception) {
+		GoogleJsonError details = exception.getDetails();
+		String reason = null;
+		String message = exception.getStatusMessage();
+		if (details != null) {
+			message = details.getMessage();
+			if (details.getErrors() != null && !details.getErrors().isEmpty()) {
+				reason = details.getErrors().get(0).getReason();
+			}
+		}
+		return serviceName + " API 오류(status=" + exception.getStatusCode()
+			+ ", reason=" + blankToDefault(reason, "unknown")
+			+ ", message=" + blankToDefault(message, "no_message") + ")";
 	}
 
 	private List<CollectedItem> collectDriveAll(Drive drive) throws IOException {
@@ -412,6 +433,11 @@ public class GoogleMetadataCollector {
 
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
+	}
+
+	private String blankToDefault(String value, String defaultValue) {
+		if (isBlank(value)) return defaultValue;
+		return value;
 	}
 
 	private record DriveFolderScope(String folderId, String folderPath) {
