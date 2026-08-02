@@ -51,7 +51,7 @@ public class GoogleMetadataCollector {
 	private static final String USER_ID = "me";
 	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 	private static final String GMAIL_LIST_FIELDS = "nextPageToken,messages(id,threadId)";
-	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers,parts(filename,mimeType,body/size,parts(filename,mimeType,body/size))))";
+	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers,parts(filename,mimeType,body/size,parts(filename,mimeType,body/size)))";
 	private static final String DRIVE_FILE_FIELDS = "nextPageToken,files(id,name,parents,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,md5Checksum,owners(emailAddress),trashed,trashedTime)";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 	private static final int PAGE_SIZE = 100;
