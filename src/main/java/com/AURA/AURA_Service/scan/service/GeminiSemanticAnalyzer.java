@@ -4,11 +4,15 @@ import com.AURA.AURA_Service.scan.domain.ScannedItem;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GeminiSemanticAnalyzer {
+	private static final Logger log = LoggerFactory.getLogger(GeminiSemanticAnalyzer.class);
+
 	private final GeminiApiClient geminiApiClient;
 	private final String provider;
 	private final boolean analysisEnabled;
@@ -34,7 +38,9 @@ public class GeminiSemanticAnalyzer {
 		try {
 			for (int start = 0; start < items.size(); start += batchSize) {
 				int end = Math.min(start + batchSize, items.size());
+				log.info("Gemini semantic analysis batch started. start={}, end={}, total={}", start, end, items.size());
 				results.putAll(geminiApiClient.analyzeBatch(items.subList(start, end), condition));
+				log.info("Gemini semantic analysis batch finished. analyzedCount={}, total={}", end, items.size());
 			}
 			return GeminiAnalysisBundle.success(results, provider, geminiApiClient.getModel());
 		} catch (RuntimeException exception) {

@@ -23,6 +23,7 @@ public class AnalysisDecisionEngine {
 	private static final BigDecimal INCLUDE_SCORE = new BigDecimal("80.00");
 	private static final BigDecimal DUPLICATE_SCORE = new BigDecimal("95.00");
 	private static final BigDecimal SEMANTIC_THRESHOLD = new BigDecimal("60.00");
+	private static final BigDecimal LOW_RISK_PROMOTION_CONFIDENCE = new BigDecimal("90.00");
 	private static final long LARGE_FILE_BYTES = 500L * 1024L * 1024L;
 	private static final Pattern COPY_SUFFIX_PATTERN = Pattern.compile("\\s*(\\(\\d+\\)|\\[\\d+\\]|-\\s*copy|copy\\s*\\d*)$", Pattern.CASE_INSENSITIVE);
 
@@ -55,22 +56,24 @@ public class AnalysisDecisionEngine {
 				continue;
 			}
 			if (!directIncludeMatches.isEmpty() || !semanticIncludeMatches.isEmpty()) {
-				decisions.add(createCandidateDecision(item, signal, resolveCleanupCategory(item, signal), RiskLevel.MEDIUM,
+				CandidateCategory category = resolveCleanupCategory(item, signal);
+				decisions.add(createCandidateDecision(item, signal, category, resolveCandidateRisk(item, signal, category),
 					INCLUDE_SCORE, "include_keyword", directExcludeMatches, semanticExcludeMatches, directIncludeMatches,
 					semanticIncludeMatches));
 				continue;
 			}
 			if (matchesPeriodCondition(item, condition)) {
-				decisions.add(createCandidateDecision(item, signal, resolveOldCategory(item), RiskLevel.MEDIUM,
+				CandidateCategory category = resolveOldCategory(item);
+				decisions.add(createCandidateDecision(item, signal, category, resolveCandidateRisk(item, signal, category),
 					PERIOD_SCORE, "period_condition", directExcludeMatches, semanticExcludeMatches, directIncludeMatches,
 					semanticIncludeMatches));
 				continue;
 			}
 			CandidateCategory generalCategory = resolveGeneralCategory(item, signal);
 			if (generalCategory != null) {
-				decisions.add(createCandidateDecision(item, signal, generalCategory, RiskLevel.MEDIUM, GENERAL_SCORE,
-					"general_cleanup_rule", directExcludeMatches, semanticExcludeMatches, directIncludeMatches,
-					semanticIncludeMatches));
+				decisions.add(createCandidateDecision(item, signal, generalCategory,
+					resolveCandidateRisk(item, signal, generalCategory), GENERAL_SCORE, "general_cleanup_rule",
+					directExcludeMatches, semanticExcludeMatches, directIncludeMatches, semanticIncludeMatches));
 			} else {
 				decisions.add(createProtectedDecision(item, signal, "no_cleanup_signal", directExcludeMatches,
 					semanticExcludeMatches, directIncludeMatches, semanticIncludeMatches));
@@ -268,6 +271,19 @@ public class AnalysisDecisionEngine {
 		String searchText = item.toSearchText().toLowerCase(Locale.ROOT);
 		if (List.of("tmp", "temp", "bak", "backup", "old").contains(item.getFileExtension())) return true;
 		return searchText.contains("backup") || searchText.contains("temp") || searchText.contains("~$") || searchText.contains("copy");
+	}
+
+	private RiskLevel resolveCandidateRisk(ScannedItem item, GeminiAnalysisResult signal, CandidateCategory category) {
+		if (category == CandidateCategory.PROMOTION_MAIL && isLowRiskPromotion(item, signal)) return RiskLevel.LOW;
+		if (category == CandidateCategory.TEMP_OR_BACKUP) return RiskLevel.LOW;
+		return RiskLevel.MEDIUM;
+	}
+
+	private boolean isLowRiskPromotion(ScannedItem item, GeminiAnalysisResult signal) {
+		if (signal.confidenceScore() != null && signal.confidenceScore().compareTo(LOW_RISK_PROMOTION_CONFIDENCE) >= 0) return true;
+		String searchText = item.toSearchText().toLowerCase(Locale.ROOT);
+		return searchText.contains("category_promotions") || searchText.contains("newsletter")
+			|| searchText.contains("noreply") || searchText.contains("no-reply");
 	}
 
 	private String normalizeDuplicateTitle(String title) {

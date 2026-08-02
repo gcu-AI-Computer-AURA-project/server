@@ -11,10 +11,11 @@ import com.AURA.AURA_Service.auth.service.GoogleOAuthClient.GoogleToken;
 import com.AURA.AURA_Service.auth.service.TokenEncryptionService;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.google.api.client.googleapis.json.GoogleJsonError;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
-import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
@@ -30,6 +31,7 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -43,10 +45,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GoogleMetadataCollector {
+	private static final Logger log = LoggerFactory.getLogger(GoogleMetadataCollector.class);
 	private static final String APPLICATION_NAME = "AURA_Service";
 	private static final String USER_ID = "me";
 	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
@@ -55,18 +61,30 @@ public class GoogleMetadataCollector {
 	private static final String DRIVE_FILE_FIELDS = "nextPageToken,files(id,name,parents,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,md5Checksum,owners(emailAddress),trashed,trashedTime)";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 	private static final int PAGE_SIZE = 100;
+	private static final int DEFAULT_GOOGLE_API_TIMEOUT_SECONDS = 60;
+	private static final int GOOGLE_API_MAX_ATTEMPTS = 3;
+	private static final int PROGRESS_LOG_INTERVAL = 100;
 
 	private final UserRepository userRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
 	private final TokenEncryptionService tokenEncryptionService;
 	private final GoogleOAuthClient googleOAuthClient;
+	private final int googleApiTimeoutMillis;
+	private final int gmailMaxMessages;
+	private final int driveMaxFiles;
 
 	public GoogleMetadataCollector(UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
-		TokenEncryptionService tokenEncryptionService, GoogleOAuthClient googleOAuthClient) {
+		TokenEncryptionService tokenEncryptionService, GoogleOAuthClient googleOAuthClient,
+		@Value("${aura.google.api-timeout-seconds}") int googleApiTimeoutSeconds,
+		@Value("${aura.scan.gmail-max-messages}") int gmailMaxMessages,
+		@Value("${aura.scan.drive-max-files}") int driveMaxFiles) {
 		this.userRepository = userRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.googleOAuthClient = googleOAuthClient;
+		this.googleApiTimeoutMillis = toMillis(googleApiTimeoutSeconds);
+		this.gmailMaxMessages = normalizeLimit(gmailMaxMessages);
+		this.driveMaxFiles = normalizeLimit(driveMaxFiles);
 	}
 
 	public List<CollectedItem> collect(Long userId, ScanCondition condition) {
@@ -80,9 +98,12 @@ public class GoogleMetadataCollector {
 		oauthToken.update(null, googleToken.expiresIn(), googleToken.scope());
 		oauthTokenRepository.save(oauthToken);
 
+		log.info("Google metadata scan started. userId={}, scanSource={}", userId, condition.getScanSource());
 		List<CollectedItem> items = new ArrayList<>();
 		if (requiresGmail(condition.getScanSource())) items.addAll(collectGmail(googleToken.accessToken(), condition));
 		if (requiresDrive(condition.getScanSource())) items.addAll(collectDrive(googleToken.accessToken(), condition));
+		log.info("Google metadata scan finished. userId={}, totalCount={}, mailCount={}, driveCount={}",
+			userId, items.size(), countBySource(items, ItemSource.GMAIL), countBySource(items, ItemSource.DRIVE));
 		return items;
 	}
 
@@ -92,23 +113,26 @@ public class GoogleMetadataCollector {
 			List<CollectedItem> items = new ArrayList<>();
 			String pageToken = null;
 			do {
-				ListMessagesResponse response = gmail.users().messages().list(USER_ID)
-					.setQ("-in:trash")
-					.setMaxResults((long) PAGE_SIZE)
+				String currentPageToken = pageToken;
+				ListMessagesResponse response = executeWithRetry(() -> gmail.users().messages().list(USER_ID)
+					.setQ(createGmailQuery(condition))
+					.setMaxResults((long) pageSize(items, gmailMaxMessages))
 					.setFields(GMAIL_LIST_FIELDS)
-					.setPageToken(pageToken)
-					.execute();
+					.setPageToken(currentPageToken)
+					.execute());
 				if (response.getMessages() != null) {
 					for (Message listedMessage : response.getMessages()) {
-						items.add(toGmailItem(gmail.users().messages().get(USER_ID, listedMessage.getId())
+						if (!hasRemaining(items, gmailMaxMessages)) break;
+						items.add(toGmailItem(executeWithRetry(() -> gmail.users().messages().get(USER_ID, listedMessage.getId())
 							.setFormat("metadata")
 							.setMetadataHeaders(List.of("Subject", "From", "Date"))
 							.setFields(GMAIL_MESSAGE_FIELDS)
-							.execute(), condition));
+							.execute()), condition));
+						logProgress("Gmail metadata scan", items.size());
 					}
 				}
 				pageToken = response.getNextPageToken();
-			} while (pageToken != null);
+			} while (pageToken != null && hasRemaining(items, gmailMaxMessages));
 			return items;
 		} catch (GoogleJsonResponseException exception) {
 			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED, createGoogleApiErrorMessage("Gmail", exception));
@@ -151,22 +175,26 @@ public class GoogleMetadataCollector {
 		Map<String, String> folderPathCache = new HashMap<>();
 		String pageToken = null;
 		do {
-			FileList fileList = drive.files().list()
+			String currentPageToken = pageToken;
+			FileList fileList = executeWithRetry(() -> drive.files().list()
 				.setQ("mimeType != '" + FOLDER_MIME_TYPE + "' and trashed = false")
 				.setFields(DRIVE_FILE_FIELDS)
-				.setPageSize(PAGE_SIZE)
-				.setPageToken(pageToken)
+				.setPageSize(pageSize(items, driveMaxFiles))
+				.setPageToken(currentPageToken)
+				.setOrderBy("modifiedTime")
 				.setSupportsAllDrives(true)
 				.setIncludeItemsFromAllDrives(true)
-				.execute();
+				.execute());
 			if (fileList.getFiles() != null) {
 				for (File file : fileList.getFiles()) {
+					if (!hasRemaining(items, driveMaxFiles)) break;
 					String parentId = extractParentId(file);
 					items.add(toDriveItem(file, resolveFolderPath(drive, parentId, folderPathCache)));
+					logProgress("Drive metadata scan", items.size());
 				}
 			}
 			pageToken = fileList.getNextPageToken();
-		} while (pageToken != null);
+		} while (pageToken != null && hasRemaining(items, driveMaxFiles));
 		return items;
 	}
 
@@ -174,29 +202,33 @@ public class GoogleMetadataCollector {
 		List<CollectedItem> items = new ArrayList<>();
 		Deque<DriveFolderScope> folderScopes = new ArrayDeque<>();
 		folderScopes.add(new DriveFolderScope(condition.getDriveFolderId(), loadFolderName(drive, condition.getDriveFolderId())));
-		while (!folderScopes.isEmpty()) {
+		while (!folderScopes.isEmpty() && hasRemaining(items, driveMaxFiles)) {
 			DriveFolderScope scope = folderScopes.removeFirst();
 			String pageToken = null;
 			do {
-				FileList fileList = drive.files().list()
+				String currentPageToken = pageToken;
+				FileList fileList = executeWithRetry(() -> drive.files().list()
 					.setQ(createFolderChildrenQuery(scope.folderId(), condition.isIncludeSubfolders()))
 					.setFields(DRIVE_FILE_FIELDS)
-					.setPageSize(PAGE_SIZE)
-					.setPageToken(pageToken)
+					.setPageSize(pageSize(items, driveMaxFiles))
+					.setPageToken(currentPageToken)
+					.setOrderBy("modifiedTime")
 					.setSupportsAllDrives(true)
 					.setIncludeItemsFromAllDrives(true)
-					.execute();
+					.execute());
 				if (fileList.getFiles() != null) {
 					for (File file : fileList.getFiles()) {
 						if (isFolder(file)) {
 							if (condition.isIncludeSubfolders()) folderScopes.add(new DriveFolderScope(file.getId(), appendPath(scope.folderPath(), file.getName())));
 							continue;
 						}
+						if (!hasRemaining(items, driveMaxFiles)) break;
 						items.add(toDriveItem(file, scope.folderPath()));
+						logProgress("Drive folder metadata scan", items.size());
 					}
 				}
 				pageToken = fileList.getNextPageToken();
-			} while (pageToken != null);
+			} while (pageToken != null && hasRemaining(items, driveMaxFiles));
 		}
 		return items;
 	}
@@ -277,8 +309,7 @@ public class GoogleMetadataCollector {
 	private Gmail createGmail(String accessToken) {
 		try {
 			NetHttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-			GoogleCredentials credentials = GoogleCredentials.create(new AccessToken(accessToken, Date.from(Instant.now().plusSeconds(3600))));
-			return new Gmail.Builder(httpTransport, GsonFactory.getDefaultInstance(), new HttpCredentialsAdapter(credentials))
+			return new Gmail.Builder(httpTransport, GsonFactory.getDefaultInstance(), createRequestInitializer(accessToken))
 				.setApplicationName(APPLICATION_NAME)
 				.build();
 		} catch (GeneralSecurityException | IOException exception) {
@@ -289,13 +320,22 @@ public class GoogleMetadataCollector {
 	private Drive createDrive(String accessToken) {
 		try {
 			NetHttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-			GoogleCredentials credentials = GoogleCredentials.create(new AccessToken(accessToken, Date.from(Instant.now().plusSeconds(3600))));
-			return new Drive.Builder(httpTransport, GsonFactory.getDefaultInstance(), new HttpCredentialsAdapter(credentials))
+			return new Drive.Builder(httpTransport, GsonFactory.getDefaultInstance(), createRequestInitializer(accessToken))
 				.setApplicationName(APPLICATION_NAME)
 				.build();
 		} catch (GeneralSecurityException | IOException exception) {
 			throw new CustomException(ErrorCode.INVALID_SERVER_CONFIGURATION);
 		}
+	}
+
+	private HttpRequestInitializer createRequestInitializer(String accessToken) {
+		GoogleCredentials credentials = GoogleCredentials.create(new AccessToken(accessToken, Date.from(Instant.now().plusSeconds(3600))));
+		HttpCredentialsAdapter credentialsAdapter = new HttpCredentialsAdapter(credentials);
+		return request -> {
+			credentialsAdapter.initialize(request);
+			request.setConnectTimeout(googleApiTimeoutMillis);
+			request.setReadTimeout(googleApiTimeoutMillis);
+		};
 	}
 
 	private void validateToken(OAuthToken oauthToken, ScanSource scanSource) {
@@ -323,14 +363,29 @@ public class GoogleMetadataCollector {
 		return query;
 	}
 
+	private String createGmailQuery(ScanCondition condition) {
+		List<String> queryParts = new ArrayList<>();
+		queryParts.add("-in:trash");
+		if (condition.isApplyRecentConditions()) {
+			Integer createdBeforeMonths = condition.getCreatedBeforeMonths();
+			Integer excludeRecentDays = condition.getExcludeRecentDays();
+			if (createdBeforeMonths != null && createdBeforeMonths > 0) {
+				queryParts.add("older_than:" + createdBeforeMonths + "m");
+			} else if (excludeRecentDays != null && excludeRecentDays > 0) {
+				queryParts.add("older_than:" + excludeRecentDays + "d");
+			}
+		}
+		return String.join(" ", queryParts);
+	}
+
 	private String resolveFolderPath(Drive drive, String folderId, Map<String, String> folderPathCache) {
 		if (isBlank(folderId)) return null;
 		if (folderPathCache.containsKey(folderId)) return folderPathCache.get(folderId);
 		try {
-			File folder = drive.files().get(folderId)
+			File folder = executeWithRetry(() -> drive.files().get(folderId)
 				.setFields("id,name,parents")
 				.setSupportsAllDrives(true)
-				.execute();
+				.execute());
 			String parentPath = resolveFolderPath(drive, extractParentId(folder), folderPathCache);
 			String folderPath = appendPath(parentPath, folder.getName());
 			folderPathCache.put(folderId, folderPath);
@@ -343,10 +398,10 @@ public class GoogleMetadataCollector {
 
 	private String loadFolderName(Drive drive, String folderId) {
 		try {
-			File folder = drive.files().get(folderId)
+			File folder = executeWithRetry(() -> drive.files().get(folderId)
 				.setFields("id,name")
 				.setSupportsAllDrives(true)
-				.execute();
+				.execute());
 			return folder.getName();
 		} catch (IOException exception) {
 			return folderId;
@@ -435,11 +490,91 @@ public class GoogleMetadataCollector {
 		return value == null || value.isBlank();
 	}
 
+	private boolean hasRemaining(List<CollectedItem> items, int maxCount) {
+		if (maxCount <= 0) return true;
+		return items.size() < maxCount;
+	}
+
+	private long countBySource(List<CollectedItem> items, ItemSource itemSource) {
+		return items.stream().filter(item -> item.itemSource() == itemSource).count();
+	}
+
+	private void logProgress(String taskName, int collectedCount) {
+		if (collectedCount > 0 && collectedCount % PROGRESS_LOG_INTERVAL == 0) {
+			log.info("{} progressed. collectedCount={}", taskName, collectedCount);
+		}
+	}
+
+	private int pageSize(List<CollectedItem> items, int maxCount) {
+		if (maxCount <= 0) return PAGE_SIZE;
+		return Math.max(1, Math.min(PAGE_SIZE, maxCount - items.size()));
+	}
+
+	private int toMillis(int seconds) {
+		long normalizedSeconds = normalizePositive(seconds, DEFAULT_GOOGLE_API_TIMEOUT_SECONDS);
+		return (int) Math.min(Integer.MAX_VALUE, normalizedSeconds * 1000L);
+	}
+
+	private int normalizePositive(int value, int defaultValue) {
+		if (value <= 0) return defaultValue;
+		return value;
+	}
+
+	private int normalizeLimit(int value) {
+		return Math.max(value, 0);
+	}
+
+	private <T> T executeWithRetry(GoogleApiCall<T> apiCall) throws IOException {
+		IOException lastException = null;
+		for (int attempt = 1; attempt <= GOOGLE_API_MAX_ATTEMPTS; attempt++) {
+			try {
+				return apiCall.execute();
+			} catch (IOException exception) {
+				lastException = exception;
+				if (attempt >= GOOGLE_API_MAX_ATTEMPTS || !isRetryable(exception)) throw exception;
+				sleepBeforeRetry(attempt, exception);
+			}
+		}
+		throw lastException;
+	}
+
+	private boolean isRetryable(IOException exception) {
+		if (isTimeout(exception)) return true;
+		if (exception instanceof GoogleJsonResponseException googleException) {
+			int statusCode = googleException.getStatusCode();
+			return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+		}
+		return false;
+	}
+
+	private boolean isTimeout(Throwable throwable) {
+		Throwable current = throwable;
+		while (current != null) {
+			if (current instanceof SocketTimeoutException) return true;
+			current = current.getCause();
+		}
+		return false;
+	}
+
+	private void sleepBeforeRetry(int attempt, IOException exception) throws IOException {
+		try {
+			Thread.sleep(500L * attempt);
+		} catch (InterruptedException interruptedException) {
+			Thread.currentThread().interrupt();
+			throw exception;
+		}
+	}
+
 	private String blankToDefault(String value, String defaultValue) {
 		if (isBlank(value)) return defaultValue;
 		return value;
 	}
 
 	private record DriveFolderScope(String folderId, String folderPath) {
+	}
+
+	@FunctionalInterface
+	private interface GoogleApiCall<T> {
+		T execute() throws IOException;
 	}
 }

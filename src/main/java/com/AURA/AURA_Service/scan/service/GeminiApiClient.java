@@ -25,6 +25,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class GeminiApiClient {
+	private static final int ERROR_BODY_MAX_LENGTH = 500;
+
 	private final ObjectMapper objectMapper;
 	private final String apiKey;
 	private final String apiUrl;
@@ -62,7 +64,8 @@ public class GeminiApiClient {
 				.build();
 			HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 			if (response.statusCode() < 200 || response.statusCode() >= 300) {
-				throw new IllegalStateException("Gemini API rejected request. status=" + response.statusCode());
+				throw new IllegalStateException("Gemini API rejected request. status=" + response.statusCode()
+					+ ", body=" + abbreviate(response.body()));
 			}
 			return parseResponse(response.body());
 		} catch (InterruptedException exception) {
@@ -82,7 +85,7 @@ public class GeminiApiClient {
 		return requestBody;
 	}
 
-	private List<Map<String, Object>> createResponseFormat() {
+	private Map<String, Object> createResponseFormat() {
 		Map<String, Object> keywordMatchSchema = new LinkedHashMap<>();
 		keywordMatchSchema.put("type", "object");
 		keywordMatchSchema.put("properties", Map.of(
@@ -112,7 +115,12 @@ public class GeminiApiClient {
 		schema.put("type", "object");
 		schema.put("properties", Map.of("items", Map.of("type", "array", "items", itemSchema)));
 		schema.put("required", List.of("items"));
-		return List.of(Map.of("type", "json_schema", "json_schema", Map.of("name", "aura_scan_analysis", "schema", schema)));
+
+		Map<String, Object> responseFormat = new LinkedHashMap<>();
+		responseFormat.put("type", "text");
+		responseFormat.put("mime_type", "application/json");
+		responseFormat.put("schema", schema);
+		return responseFormat;
 	}
 
 	private String createPrompt(List<ScannedItem> items, ScanCondition condition) throws JsonProcessingException {
@@ -275,5 +283,12 @@ public class GeminiApiClient {
 
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
+	}
+
+	private String abbreviate(String value) {
+		if (isBlank(value)) return "";
+		String normalized = value.replaceAll("\\s+", " ").trim();
+		if (normalized.length() <= ERROR_BODY_MAX_LENGTH) return normalized;
+		return normalized.substring(0, ERROR_BODY_MAX_LENGTH) + "...";
 	}
 }
