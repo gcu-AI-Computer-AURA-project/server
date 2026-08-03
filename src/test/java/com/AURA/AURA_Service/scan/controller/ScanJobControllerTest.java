@@ -4,7 +4,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,6 +15,8 @@ import com.AURA.AURA_Service.auth.domain.ScanSetting.ScanSource;
 import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanRunningJobResponse;
+import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
 import com.AURA.AURA_Service.scan.service.ScanJobService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -78,5 +82,55 @@ class ScanJobControllerTest {
 			.andExpect(jsonPath("$.data.scan_source").value("DRIVE_FOLDER"))
 			.andExpect(jsonPath("$.data.progress_percent").value(0.00))
 			.andExpect(jsonPath("$.data.created_at").value("2026-07-14T10:40:00"));
+	}
+
+	@Test
+	void getRunningReturnsRunningScanJobResponse() throws Exception {
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("1", null, List.of()));
+		when(scanJobService.getRunning(1L)).thenReturn(ScanRunningResponse.from(new ScanRunningJobResponse(
+			15L,
+			JobStatus.SCANNING,
+			ScanSource.MAIL_AND_DRIVE,
+			new BigDecimal("35.50"),
+			420,
+			130,
+			0,
+			180L,
+			LocalDateTime.of(2026, 7, 14, 10, 40, 10)
+		)));
+
+		mockMvc.perform(get("/api/scans/running")
+				.principal(new UsernamePasswordAuthenticationToken("1", null)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.scan_job.scan_job_id").value(15))
+			.andExpect(jsonPath("$.data.scan_job.job_status").value("SCANNING"))
+			.andExpect(jsonPath("$.data.scan_job.scan_source").value("MAIL_AND_DRIVE"))
+			.andExpect(jsonPath("$.data.scan_job.progress_percent").value(35.50))
+			.andExpect(jsonPath("$.data.scan_job.mail_scanned_count").value(420))
+			.andExpect(jsonPath("$.data.scan_job.drive_scanned_count").value(130))
+			.andExpect(jsonPath("$.data.scan_job.candidate_count").value(0))
+			.andExpect(jsonPath("$.data.scan_job.estimated_remaining_seconds").value(180))
+			.andExpect(jsonPath("$.data.scan_job.started_at").value("2026-07-14T10:40:10"));
+	}
+
+	@Test
+	void getRunningReturnsNullScanJobWhenNoRunningScan() throws Exception {
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("1", null, List.of()));
+		when(scanJobService.getRunning(1L)).thenReturn(ScanRunningResponse.empty());
+
+		mockMvc.perform(get("/api/scans/running")
+				.principal(new UsernamePasswordAuthenticationToken("1", null)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.scan_job").doesNotExist())
+			.andExpect(content().json("""
+				{
+				  "success": true,
+				  "data": {
+				    "scan_job": null
+				  }
+				}
+				"""));
 	}
 }
