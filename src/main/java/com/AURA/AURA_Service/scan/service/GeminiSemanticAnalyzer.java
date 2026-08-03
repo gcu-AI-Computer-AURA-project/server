@@ -31,8 +31,15 @@ public class GeminiSemanticAnalyzer {
 	}
 
 	public GeminiAnalysisBundle analyze(List<ScannedItem> items, ScanCondition condition) {
+		return analyze(items, condition, ScanProgressListener.none());
+	}
+
+	public GeminiAnalysisBundle analyze(List<ScannedItem> items, ScanCondition condition, ScanProgressListener progressListener) {
 		if (items.isEmpty()) return GeminiAnalysisBundle.success(Map.of(), provider, geminiApiClient.getModel());
-		if (!analysisEnabled || !isGeminiProvider()) return GeminiAnalysisBundle.ruleBased();
+		if (!analysisEnabled || !isGeminiProvider()) {
+			progressListener.onAnalysisProgress(items.size(), items.size());
+			return GeminiAnalysisBundle.ruleBased();
+		}
 
 		Map<String, GeminiAnalysisResult> results = new LinkedHashMap<>();
 		try {
@@ -41,6 +48,7 @@ public class GeminiSemanticAnalyzer {
 				log.info("Gemini semantic analysis batch started. start={}, end={}, total={}", start, end, items.size());
 				results.putAll(geminiApiClient.analyzeBatch(items.subList(start, end), condition));
 				log.info("Gemini semantic analysis batch finished. analyzedCount={}, total={}", end, items.size());
+				progressListener.onAnalysisProgress(end, items.size());
 			}
 			return GeminiAnalysisBundle.success(results, provider, geminiApiClient.getModel());
 		} catch (RuntimeException exception) {

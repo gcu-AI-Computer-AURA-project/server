@@ -23,6 +23,10 @@ public record GeminiAnalysisBundle(
 	}
 
 	public GeminiAnalysisResult resultFor(ScannedItem item) {
-		return results.getOrDefault(item.getClientItemKey(), GeminiAnalysisResult.empty(item.getClientItemKey()));
+		GeminiAnalysisResult result = results.get(item.getClientItemKey());
+		if (result != null) return result;
+		if ("RULE_BASED".equalsIgnoreCase(aiProvider)) return GeminiAnalysisResult.ruleBased(item.getClientItemKey());
+		if (fallback) return GeminiAnalysisResult.fallback(item.getClientItemKey());
+		return GeminiAnalysisResult.empty(item.getClientItemKey());
 	}
 }

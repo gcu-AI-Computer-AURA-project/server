@@ -47,8 +47,8 @@ public class AnalysisCandidate {
 
 	public static AnalysisCandidate create(ScanJob scanJob, ScannedItem scannedItem, CandidateCategory category,
 		RiskLevel riskLevel, BigDecimal priorityScore, BigDecimal ghostScore, boolean isProtected,
-		long estimatedReclaimBytes, String aiProvider, String aiModelName, BigDecimal aiConfidenceScore,
-		List<String> semanticTags, Map<String, Object> matchedConditions) {
+		SelectionStatus selectionStatus, long estimatedReclaimBytes, String aiProvider, String aiModelName,
+		BigDecimal aiConfidenceScore, List<String> semanticTags, Map<String, Object> matchedConditions) {
 		AnalysisCandidate candidate = new AnalysisCandidate();
 		candidate.scanJob = scanJob;
 		candidate.scannedItem = scannedItem;
@@ -57,7 +57,7 @@ public class AnalysisCandidate {
 		candidate.priorityScore = priorityScore;
 		candidate.ghostScore = ghostScore;
 		candidate.isProtected = isProtected;
-		candidate.selectionStatus = isProtected ? SelectionStatus.NONE : SelectionStatus.SELECTED;
+		candidate.selectionStatus = resolveSelectionStatus(isProtected, selectionStatus);
 		candidate.estimatedReclaimBytes = isProtected ? 0L : estimatedReclaimBytes;
 		candidate.aiProvider = aiProvider;
 		candidate.aiModelName = aiModelName;
@@ -69,7 +69,13 @@ public class AnalysisCandidate {
 	}
 
 	public boolean isProtected() { return isProtected; }
+	public boolean isSelected() { return selectionStatus == SelectionStatus.SELECTED; }
 	public Long getEstimatedReclaimBytes() { return estimatedReclaimBytes; }
+
+	private static SelectionStatus resolveSelectionStatus(boolean isProtected, SelectionStatus selectionStatus) {
+		if (isProtected) return SelectionStatus.NONE;
+		return selectionStatus == null || selectionStatus == SelectionStatus.NONE ? SelectionStatus.SELECTED : selectionStatus;
+	}
 
 	public enum CandidateCategory {
 		PROMOTION_MAIL,

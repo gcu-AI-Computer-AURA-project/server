@@ -20,11 +20,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class GeminiApiClient {
+	private static final Logger log = LoggerFactory.getLogger(GeminiApiClient.class);
 	private static final int ERROR_BODY_MAX_LENGTH = 500;
 
 	private final ObjectMapper objectMapper;
@@ -56,18 +61,31 @@ public class GeminiApiClient {
 	public Map<String, GeminiAnalysisResult> analyzeBatch(List<ScannedItem> items, ScanCondition condition) {
 		if (!isConfigured()) throw new IllegalStateException("Gemini API configuration is empty.");
 		try {
-			String requestBody = objectMapper.writeValueAsString(createRequestBody(items, condition));
-			HttpRequest request = HttpRequest.newBuilder(createRequestUri())
-				.timeout(requestTimeout)
-				.header("Content-Type", "application/json")
-				.POST(HttpRequest.BodyPublishers.ofString(requestBody))
-				.build();
-			HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-			if (response.statusCode() < 200 || response.statusCode() >= 300) {
-				throw new IllegalStateException("Gemini API rejected request. status=" + response.statusCode()
-					+ ", body=" + abbreviate(response.body()));
+			Map<String, GeminiAnalysisResult> results = requestAnalysis(items, condition, false);
+			List<ScannedItem> missingItems = findMissingItems(items, results);
+			if (!missingItems.isEmpty()) {
+				log.warn("Gemini response missed items. requestedCount={}, missingCount={}", items.size(), missingItems.size());
+				results.putAll(requestAnalysis(missingItems, condition, true));
 			}
-			return parseResponse(response.body());
+			List<ScannedItem> lowQualityItems = findLowQualityProtectedItems(items, results);
+			if (!lowQualityItems.isEmpty()) {
+				log.warn("Gemini response returned low-quality protected items. requestedCount={}, lowQualityCount={}",
+					items.size(), lowQualityItems.size());
+				for (ScannedItem item : lowQualityItems) {
+					results.remove(item.getClientItemKey());
+				}
+				results.putAll(requestAnalysis(lowQualityItems, condition, true));
+			}
+			List<ScannedItem> finalMissingItems = findMissingItems(items, results);
+			if (!finalMissingItems.isEmpty()) {
+				log.warn("Gemini response still missed items after retry. missingKeys={}", finalMissingItems.stream()
+					.map(ScannedItem::getClientItemKey)
+					.toList());
+				for (ScannedItem item : finalMissingItems) {
+					results.put(item.getClientItemKey(), GeminiAnalysisResult.empty(item.getClientItemKey()));
+				}
+			}
+			return filterRequestedResults(items, results);
 		} catch (InterruptedException exception) {
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException("Gemini API request interrupted.", exception);
@@ -76,10 +94,63 @@ public class GeminiApiClient {
 		}
 	}
 
-	private Map<String, Object> createRequestBody(List<ScannedItem> items, ScanCondition condition) throws JsonProcessingException {
+	private Map<String, GeminiAnalysisResult> requestAnalysis(List<ScannedItem> items, ScanCondition condition, boolean retry)
+		throws IOException, InterruptedException {
+		String requestBody = objectMapper.writeValueAsString(createRequestBody(items, condition, retry));
+		HttpRequest request = HttpRequest.newBuilder(createRequestUri())
+			.timeout(requestTimeout)
+			.header("Content-Type", "application/json")
+			.POST(HttpRequest.BodyPublishers.ofString(requestBody))
+			.build();
+		HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() < 200 || response.statusCode() >= 300) {
+			throw new IllegalStateException("Gemini API rejected request. status=" + response.statusCode()
+				+ ", body=" + abbreviate(response.body()));
+		}
+		return parseResponse(response.body());
+	}
+
+	private List<ScannedItem> findMissingItems(List<ScannedItem> items, Map<String, GeminiAnalysisResult> results) {
+		return items.stream()
+			.filter(item -> !results.containsKey(item.getClientItemKey()))
+			.toList();
+	}
+
+	private List<ScannedItem> findLowQualityProtectedItems(List<ScannedItem> items, Map<String, GeminiAnalysisResult> results) {
+		return items.stream()
+			.filter(item -> isLowQualityProtectedResult(results.get(item.getClientItemKey())))
+			.toList();
+	}
+
+	private boolean isLowQualityProtectedResult(GeminiAnalysisResult result) {
+		if (result == null || result.responseStatus() != GeminiAnalysisResult.ResponseStatus.SUCCESS) return false;
+		if (result.suggestedCategory() != CandidateCategory.PROTECTED || !result.protectedHint()) return false;
+		if (result.confidenceScore() == null || result.confidenceScore().compareTo(BigDecimal.ZERO) > 0) return false;
+		return isEmpty(result.semanticTags()) && isEmpty(result.includeKeywordMatches())
+			&& isEmpty(result.excludeKeywordMatches());
+	}
+
+	private boolean isEmpty(List<?> values) {
+		return values == null || values.isEmpty();
+	}
+
+	private Map<String, GeminiAnalysisResult> filterRequestedResults(List<ScannedItem> items,
+		Map<String, GeminiAnalysisResult> results) {
+		Set<String> requestedKeys = items.stream()
+			.map(ScannedItem::getClientItemKey)
+			.collect(Collectors.toSet());
+		Map<String, GeminiAnalysisResult> filteredResults = new LinkedHashMap<>();
+		for (ScannedItem item : items) {
+			GeminiAnalysisResult result = results.get(item.getClientItemKey());
+			if (result != null && requestedKeys.contains(result.clientItemKey())) filteredResults.put(item.getClientItemKey(), result);
+		}
+		return filteredResults;
+	}
+
+	private Map<String, Object> createRequestBody(List<ScannedItem> items, ScanCondition condition, boolean retry) throws JsonProcessingException {
 		Map<String, Object> requestBody = new LinkedHashMap<>();
 		requestBody.put("model", model);
-		requestBody.put("input", createPrompt(items, condition));
+		requestBody.put("input", createPrompt(items, condition, retry));
 		requestBody.put("response_format", createResponseFormat());
 		requestBody.put("generation_config", Map.of("temperature", 0, "max_output_tokens", 8192));
 		return requestBody;
@@ -123,21 +194,33 @@ public class GeminiApiClient {
 		return responseFormat;
 	}
 
-	private String createPrompt(List<ScannedItem> items, ScanCondition condition) throws JsonProcessingException {
+	private String createPrompt(List<ScannedItem> items, ScanCondition condition, boolean retry) throws JsonProcessingException {
 		Map<String, Object> payload = new LinkedHashMap<>();
 		payload.put("conditions", createConditionPayload(condition));
 		payload.put("items", items.stream().map(this::createItemPayload).toList());
+		String retryInstruction = retry
+			? "This is a retry for previously missing or low-quality items. Return exactly these items and no other keys. Avoid zero-confidence PROTECTED output unless visible metadata clearly supports protection."
+			: "Return exactly one output object for every input item.";
 		return """
 			You are AURA's metadata-only cleanup classifier.
 			Read only the JSON metadata below. Do not infer from private content that is not present.
 			Return JSON only. Do not include markdown, prose, reasons, explanations, or comments.
-			Each output item must preserve client_item_key.
+			%s
+			The output items array length must equal the input items array length.
+			Each output item must preserve client_item_key exactly. Never shorten, translate, reorder, omit, or modify client_item_key.
+			Do not classify an item as PROTECTED only because it is uncertain.
+			Do not classify an item as PROTECTED only because it does not match include_keywords.
+			Use protected_hint true only when the item directly or semantically matches exclude_keywords.
+			If exclude_keywords is empty or unrelated to the item, protected_hint must be false.
+			Old items and duplicate-like items are cleanup candidates by default unless they match exclude_keywords or explicit metadata protection rules.
+			If an item is uncertain, choose OLD_MAIL for GMAIL or OLD_DRIVE_FILE for DRIVE, set cleanup_hint false, protected_hint false, confidence_score between 0 and 30, and still provide semantic_tags.
+			semantic_tags must contain 1 to 4 short tags derived from visible metadata, source, or category. Do not return an empty semantic_tags array unless every visible metadata field is empty.
 			Allowed suggested_category values are PROMOTION_MAIL, OLD_MAIL, DUPLICATE_FILE, OLD_DRIVE_FILE, LARGE_FILE, LOW_VALUE_ATTACHMENT, TEMP_OR_BACKUP, PROTECTED.
 			Use include_keyword_matches and exclude_keyword_matches for direct or semantic keyword relations.
 			Schema:
 			{"items":[{"client_item_key":"GMAIL:id or DRIVE:id","suggested_category":"OLD_DRIVE_FILE","cleanup_hint":true,"protected_hint":false,"confidence_score":82.5,"semantic_tags":["class"],"include_keyword_matches":[{"keyword":"class","match_type":"SEMANTIC","confidence_score":84.0}],"exclude_keyword_matches":[]}]}
 			Input:
-			""" + objectMapper.writeValueAsString(payload);
+			""".formatted(retryInstruction) + objectMapper.writeValueAsString(payload);
 	}
 
 	private Map<String, Object> createConditionPayload(ScanCondition condition) {
@@ -206,7 +289,8 @@ public class GeminiApiClient {
 			parseScore(itemNode.path("confidence_score")),
 			parseStringList(itemNode.path("semantic_tags")),
 			parseKeywordMatches(itemNode.path("include_keyword_matches")),
-			parseKeywordMatches(itemNode.path("exclude_keyword_matches"))
+			parseKeywordMatches(itemNode.path("exclude_keyword_matches")),
+			GeminiAnalysisResult.ResponseStatus.SUCCESS
 		);
 	}
 

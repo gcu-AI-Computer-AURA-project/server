@@ -12,12 +12,31 @@ public record GeminiAnalysisResult(
 	BigDecimal confidenceScore,
 	List<String> semanticTags,
 	List<KeywordMatch> includeKeywordMatches,
-	List<KeywordMatch> excludeKeywordMatches
+	List<KeywordMatch> excludeKeywordMatches,
+	ResponseStatus responseStatus
 ) {
 	public static GeminiAnalysisResult empty(String clientItemKey) {
-		return new GeminiAnalysisResult(clientItemKey, null, false, false, BigDecimal.ZERO, List.of(), List.of(), List.of());
+		return new GeminiAnalysisResult(clientItemKey, null, false, false, null, List.of(), List.of(), List.of(),
+			ResponseStatus.MISSING);
+	}
+
+	public static GeminiAnalysisResult ruleBased(String clientItemKey) {
+		return new GeminiAnalysisResult(clientItemKey, null, false, false, null, List.of(), List.of(), List.of(),
+			ResponseStatus.RULE_BASED);
+	}
+
+	public static GeminiAnalysisResult fallback(String clientItemKey) {
+		return new GeminiAnalysisResult(clientItemKey, null, false, false, null, List.of(), List.of(), List.of(),
+			ResponseStatus.FALLBACK);
 	}
 
 	public record KeywordMatch(String keyword, String matchType, BigDecimal confidenceScore) {
+	}
+
+	public enum ResponseStatus {
+		SUCCESS,
+		MISSING,
+		RULE_BASED,
+		FALLBACK
 	}
 }

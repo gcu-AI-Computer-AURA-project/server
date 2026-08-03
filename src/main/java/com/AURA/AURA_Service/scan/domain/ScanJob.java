@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.hibernate.annotations.CreationTimestamp;
@@ -74,15 +75,25 @@ public class ScanJob {
 	 */
 	public void markScanning() {
 		this.jobStatus = JobStatus.SCANNING;
-		this.progressPercent = new BigDecimal("20.00");
+		this.progressPercent = new BigDecimal("0.00");
 		this.startedAt = LocalDateTime.now();
+	}
+
+	public void updateScanningProgress(BigDecimal progressPercent) {
+		if (this.jobStatus != JobStatus.SCANNING) return;
+		updateProgress(progressPercent, new BigDecimal("0.00"), new BigDecimal("50.00"));
 	}
 
 	public void markAnalyzing(int mailScannedCount, int driveScannedCount) {
 		this.jobStatus = JobStatus.ANALYZING;
-		this.progressPercent = new BigDecimal("70.00");
+		updateProgress(new BigDecimal("50.00"), new BigDecimal("50.00"), new BigDecimal("50.00"));
 		this.mailScannedCount = mailScannedCount;
 		this.driveScannedCount = driveScannedCount;
+	}
+
+	public void updateAnalyzingProgress(BigDecimal progressPercent) {
+		if (this.jobStatus != JobStatus.ANALYZING) return;
+		updateProgress(progressPercent, new BigDecimal("50.00"), new BigDecimal("99.00"));
 	}
 
 	public void markCompleted(int candidateCount, int protectedCount, long estimatedReclaimBytes) {
@@ -113,6 +124,15 @@ public class ScanJob {
 	private String trimErrorMessage(String value) {
 		if (value == null) return null;
 		return value.length() > 500 ? value.substring(0, 500) : value;
+	}
+
+	private void updateProgress(BigDecimal value, BigDecimal min, BigDecimal max) {
+		BigDecimal normalized = value == null ? min : value.setScale(2, RoundingMode.HALF_UP);
+		if (normalized.compareTo(min) < 0) normalized = min;
+		if (normalized.compareTo(max) > 0) normalized = max;
+		if (this.progressPercent == null || normalized.compareTo(this.progressPercent) > 0) {
+			this.progressPercent = normalized;
+		}
 	}
 
 	public enum JobStatus {
