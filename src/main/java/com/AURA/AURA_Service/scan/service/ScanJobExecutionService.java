@@ -102,7 +102,7 @@ public class ScanJobExecutionService {
 			long candidateCount = candidates.stream().filter(candidate -> !candidate.isProtected()).count();
 			long protectedCount = candidates.stream().filter(AnalysisCandidate::isProtected).count();
 			long estimatedReclaimBytes = candidates.stream()
-				.filter(candidate -> !candidate.isProtected())
+				.filter(AnalysisCandidate::isSelected)
 				.mapToLong(AnalysisCandidate::getEstimatedReclaimBytes)
 				.sum();
 			if (analysisBundle.fallback()) {
@@ -117,8 +117,8 @@ public class ScanJobExecutionService {
 	private AnalysisCandidate toAnalysisCandidate(ScanJob scanJob, ScannedItem item, CandidateDecision decision,
 		GeminiAnalysisBundle analysisBundle) {
 		return AnalysisCandidate.create(scanJob, item, decision.category(), decision.riskLevel(), decision.priorityScore(),
-			decision.ghostScore(), decision.isProtected(), decision.estimatedReclaimBytes(), analysisBundle.aiProvider(),
-			analysisBundle.aiModelName(), decision.aiConfidenceScore(), decision.semanticTags(),
+			decision.ghostScore(), decision.isProtected(), decision.selectionStatus(), decision.estimatedReclaimBytes(),
+			analysisBundle.aiProvider(), analysisBundle.aiModelName(), decision.aiConfidenceScore(), decision.semanticTags(),
 			decision.matchedConditions());
 	}
 
