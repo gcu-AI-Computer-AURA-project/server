@@ -12,6 +12,8 @@ import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.scan.repository.AnalysisCandidateRepository;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
 import com.AURA.AURA_Service.scan.repository.ScannedItemRepository;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -21,6 +23,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class ScanJobExecutionService {
+	private static final BigDecimal PROGRESS_UPDATE_STEP = new BigDecimal("1.00");
+
 	private final TransactionTemplate transactionTemplate;
 	private final ScanJobRepository scanJobRepository;
 	private final UserRepository userRepository;
@@ -47,11 +51,12 @@ public class ScanJobExecutionService {
 	public void execute(Long scanJobId) {
 		ScanExecutionContext context = startScan(scanJobId);
 		if (context == null) return;
+		ScanProgressListener progressListener = new PersistentScanProgressListener(scanJobId);
 		try {
-			List<CollectedItem> collectedItems = googleMetadataCollector.collect(context.userId(), context.condition());
+			List<CollectedItem> collectedItems = googleMetadataCollector.collect(context.userId(), context.condition(), progressListener);
 			List<ScannedItem> scannedItems = saveScannedItems(scanJobId, context.userId(), collectedItems);
 			if (geminiSemanticAnalyzer.isRequiredButNotConfigured()) throw new CustomException(ErrorCode.GEMINI_API_CALL_FAILED);
-			GeminiAnalysisBundle analysisBundle = geminiSemanticAnalyzer.analyze(scannedItems, context.condition());
+			GeminiAnalysisBundle analysisBundle = geminiSemanticAnalyzer.analyze(scannedItems, context.condition(), progressListener);
 			List<CandidateDecision> decisions = analysisDecisionEngine.decide(scannedItems, context.condition(), analysisBundle,
 				context.userEmail());
 			saveCandidatesAndFinish(scanJobId, decisions, analysisBundle);
@@ -126,6 +131,14 @@ public class ScanJobExecutionService {
 		transactionTemplate.executeWithoutResult(status -> findScanJob(scanJobId).markFailed(exception.getMessage()));
 	}
 
+	private void updateScanningProgress(Long scanJobId, BigDecimal progressPercent) {
+		transactionTemplate.executeWithoutResult(status -> findScanJob(scanJobId).updateScanningProgress(progressPercent));
+	}
+
+	private void updateAnalyzingProgress(Long scanJobId, BigDecimal progressPercent) {
+		transactionTemplate.executeWithoutResult(status -> findScanJob(scanJobId).updateAnalyzingProgress(progressPercent));
+	}
+
 	private ScanJob findScanJob(Long scanJobId) {
 		return scanJobRepository.findById(scanJobId).orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
 	}
@@ -136,6 +149,44 @@ public class ScanJobExecutionService {
 
 	private int toInt(long value) {
 		return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+	}
+
+	private BigDecimal progressPercent(double start, double range, int currentCount, int totalCount) {
+		if (totalCount <= 0) return BigDecimal.valueOf(start).setScale(2, RoundingMode.HALF_UP);
+		double ratio = Math.max(0.0, Math.min(1.0, currentCount / (double) totalCount));
+		return BigDecimal.valueOf(start + range * ratio).setScale(2, RoundingMode.HALF_UP);
+	}
+
+	private boolean shouldUpdateProgress(BigDecimal previousProgress, BigDecimal currentProgress, int currentCount, int totalCount) {
+		if (previousProgress == null) return true;
+		if (totalCount > 0 && currentCount >= totalCount) return true;
+		return currentProgress.subtract(previousProgress).abs().compareTo(PROGRESS_UPDATE_STEP) >= 0;
+	}
+
+	private class PersistentScanProgressListener implements ScanProgressListener {
+		private final Long scanJobId;
+		private BigDecimal metadataProgress;
+		private BigDecimal analysisProgress;
+
+		private PersistentScanProgressListener(Long scanJobId) {
+			this.scanJobId = scanJobId;
+		}
+
+		@Override
+		public void onMetadataProgress(int collectedCount, int expectedCount) {
+			BigDecimal currentProgress = progressPercent(0.0, 50.0, collectedCount, expectedCount);
+			if (!shouldUpdateProgress(metadataProgress, currentProgress, collectedCount, expectedCount)) return;
+			metadataProgress = currentProgress;
+			updateScanningProgress(scanJobId, currentProgress);
+		}
+
+		@Override
+		public void onAnalysisProgress(int analyzedCount, int totalCount) {
+			BigDecimal currentProgress = progressPercent(50.0, 50.0, analyzedCount, totalCount);
+			if (!shouldUpdateProgress(analysisProgress, currentProgress, analyzedCount, totalCount)) return;
+			analysisProgress = currentProgress;
+			updateAnalyzingProgress(scanJobId, currentProgress);
+		}
 	}
 
 	private record ScanExecutionContext(Long userId, String userEmail, ScanCondition condition) {

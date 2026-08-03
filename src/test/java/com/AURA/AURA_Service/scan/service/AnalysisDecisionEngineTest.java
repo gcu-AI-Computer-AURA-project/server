@@ -3,6 +3,7 @@ package com.AURA.AURA_Service.scan.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.AURA.AURA_Service.auth.domain.ScanSetting.ScanSource;
 import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.CandidateCategory;
@@ -64,6 +65,43 @@ class AnalysisDecisionEngineTest {
 		assertEquals(CandidateCategory.OLD_DRIVE_FILE, decision.category());
 		assertEquals(RiskLevel.MEDIUM, decision.riskLevel());
 		assertNotEquals(decision.ghostScore(), decision.priorityScore());
+	}
+
+	@Test
+	void oldMailPriorityReflectsSmallSizeDifference() {
+		LocalDateTime receivedAt = LocalDateTime.now().minusYears(3);
+		ScannedItem smallMail = gmailItemFromSender("mail-score-small",
+			"Legacy notice small", "inbox", "notice@example.com", 13_000L, receivedAt);
+		ScannedItem largeMail = gmailItemFromSender("mail-score-large",
+			"Legacy notice large", "inbox", "notice@example.com", 42_000L, receivedAt);
+
+		CandidateDecision smallDecision = analysisDecisionEngine.decide(List.of(smallMail), periodCondition(),
+			bundle(smallMail, signal(smallMail, CandidateCategory.OLD_MAIL, false, false, "70.00", List.of("notice"))),
+			"user@example.com").get(0);
+		CandidateDecision largeDecision = analysisDecisionEngine.decide(List.of(largeMail), periodCondition(),
+			bundle(largeMail, signal(largeMail, CandidateCategory.OLD_MAIL, false, false, "70.00", List.of("notice"))),
+			"user@example.com").get(0);
+
+		assertEquals(smallDecision.ghostScore(), largeDecision.ghostScore());
+		assertTrue(largeDecision.priorityScore().compareTo(smallDecision.priorityScore()) > 0);
+	}
+
+	@Test
+	void oldMailGhostScoreReflectsAgeContinuously() {
+		ScannedItem newerMail = gmailItemFromSender("mail-score-newer",
+			"Legacy notice newer", "inbox", "notice@example.com", 30_000L, LocalDateTime.now().minusYears(1));
+		ScannedItem olderMail = gmailItemFromSender("mail-score-older",
+			"Legacy notice older", "inbox", "notice@example.com", 30_000L, LocalDateTime.now().minusYears(5));
+
+		CandidateDecision newerDecision = analysisDecisionEngine.decide(List.of(newerMail), periodCondition(),
+			bundle(newerMail, signal(newerMail, CandidateCategory.OLD_MAIL, false, false, "70.00", List.of("notice"))),
+			"user@example.com").get(0);
+		CandidateDecision olderDecision = analysisDecisionEngine.decide(List.of(olderMail), periodCondition(),
+			bundle(olderMail, signal(olderMail, CandidateCategory.OLD_MAIL, false, false, "70.00", List.of("notice"))),
+			"user@example.com").get(0);
+
+		assertTrue(olderDecision.ghostScore().compareTo(newerDecision.ghostScore()) > 0);
+		assertTrue(olderDecision.priorityScore().compareTo(newerDecision.priorityScore()) > 0);
 	}
 
 	@Test
@@ -184,9 +222,15 @@ class AnalysisDecisionEngineTest {
 
 	private ScannedItem gmailItemFromSender(String externalItemId, String title, String labelText, String senderEmail,
 		long attachmentSizeBytes) {
+		return gmailItemFromSender(externalItemId, title, labelText, senderEmail, attachmentSizeBytes,
+			LocalDateTime.now().minusYears(2));
+	}
+
+	private ScannedItem gmailItemFromSender(String externalItemId, String title, String labelText, String senderEmail,
+		long attachmentSizeBytes, LocalDateTime receivedAt) {
 		return ScannedItem.create(null, null, ItemSource.GMAIL, externalItemId, null, null, title,
 			senderEmail, labelText, "AURA cleanup test mail snippet", "message/rfc822", null, 0L,
-			attachmentSizeBytes, LocalDateTime.now().minusYears(2), null, null, null, false, false,
+			attachmentSizeBytes, receivedAt, null, null, null, false, false,
 			attachmentSizeBytes > 0, false, null, "user@example.com", false, null, Map.of());
 	}
 

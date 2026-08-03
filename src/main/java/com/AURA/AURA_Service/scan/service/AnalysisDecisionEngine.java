@@ -6,6 +6,7 @@ import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.SelectionStatus;
 import com.AURA.AURA_Service.scan.domain.ScannedItem;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -348,7 +349,7 @@ public class AnalysisDecisionEngine {
 
 	private BigDecimal calculateGhostScore(ScannedItem item, GeminiAnalysisResult signal, CandidateCategory category,
 		String ruleName, List<String> directIncludeMatches, List<String> semanticIncludeMatches) {
-		int score = categoryBaseGhostScore(category);
+		double score = categoryBaseGhostScore(category);
 		if (INCLUDE_KEYWORD_RULE.equals(ruleName)) score += 10;
 		if (PERIOD_CONDITION_RULE.equals(ruleName)) score += oldDataBonus(item);
 		if (GENERAL_CLEANUP_RULE.equals(ruleName)) score += 2;
@@ -362,7 +363,7 @@ public class AnalysisDecisionEngine {
 	private BigDecimal calculatePriorityScore(ScannedItem item, GeminiAnalysisResult signal, CandidateCategory category,
 		RiskLevel riskLevel, BigDecimal ghostScore, String ruleName, List<String> directIncludeMatches,
 		List<String> semanticIncludeMatches) {
-		int score = ghostScore.intValue();
+		double score = ghostScore.doubleValue();
 		score += reclaimSizeBonus(item.getEstimatedReclaimBytes());
 		score += categoryPriorityBonus(category);
 		if (INCLUDE_KEYWORD_RULE.equals(ruleName)) score += 8;
@@ -399,35 +400,29 @@ public class AnalysisDecisionEngine {
 		};
 	}
 
-	private int oldDataBonus(ScannedItem item) {
+	private double oldDataBonus(ScannedItem item) {
 		LocalDateTime activityTime = item.getRecentActivityTime();
 		if (activityTime == null) return 0;
-		long months = Math.max(0, ChronoUnit.MONTHS.between(activityTime, LocalDateTime.now()));
-		if (months >= 60) return 12;
-		if (months >= 36) return 9;
-		if (months >= 24) return 6;
-		if (months >= 12) return 3;
-		return 0;
+		long days = Math.max(0, ChronoUnit.DAYS.between(activityTime, LocalDateTime.now()));
+		double months = days / 30.4375;
+		return clamp(months * 0.25, 0, 18);
 	}
 
-	private int confidenceBonus(BigDecimal confidenceScore) {
+	private double confidenceBonus(BigDecimal confidenceScore) {
 		if (confidenceScore == null) return 0;
-		if (confidenceScore.compareTo(new BigDecimal("95.00")) >= 0) return 8;
-		if (confidenceScore.compareTo(new BigDecimal("85.00")) >= 0) return 6;
-		if (confidenceScore.compareTo(new BigDecimal("75.00")) >= 0) return 4;
-		if (confidenceScore.compareTo(new BigDecimal("60.00")) >= 0) return 2;
-		return 0;
+		return clamp((confidenceScore.doubleValue() - 50.0) * 0.16, 0, 8);
 	}
 
-	private int reclaimSizeBonus(long reclaimBytes) {
-		long oneMb = 1024L * 1024L;
-		long oneGb = 1024L * oneMb;
-		if (reclaimBytes >= 5L * oneGb) return 20;
-		if (reclaimBytes >= oneGb) return 16;
-		if (reclaimBytes >= 500L * oneMb) return 12;
-		if (reclaimBytes >= 100L * oneMb) return 8;
-		if (reclaimBytes >= 10L * oneMb) return 4;
-		return 0;
+	private double reclaimSizeBonus(long reclaimBytes) {
+		if (reclaimBytes <= 0) return 0;
+		double oneKb = 1024.0;
+		double oneMb = 1024.0 * oneKb;
+		if (reclaimBytes < oneMb) {
+			return clamp(Math.log1p(reclaimBytes / oneKb) / Math.log(1024.0) * 3.0, 0, 3);
+		}
+		double sizeMb = reclaimBytes / oneMb;
+		double fiveGbMb = 5.0 * 1024.0;
+		return clamp(Math.log1p(sizeMb) / Math.log1p(fiveGbMb) * 20.0, 0, 20);
 	}
 
 	private int riskPenalty(RiskLevel riskLevel) {
@@ -438,9 +433,13 @@ public class AnalysisDecisionEngine {
 		};
 	}
 
-	private BigDecimal scoreOf(int score) {
-		int boundedScore = Math.max(0, Math.min(100, score));
-		return BigDecimal.valueOf(boundedScore).setScale(2);
+	private BigDecimal scoreOf(double score) {
+		double boundedScore = clamp(score, 0, 100);
+		return BigDecimal.valueOf(boundedScore).setScale(2, RoundingMode.HALF_UP);
+	}
+
+	private double clamp(double value, double min, double max) {
+		return Math.max(min, Math.min(max, value));
 	}
 
 	private RiskLevel resolveCandidateRisk(ScannedItem item, GeminiAnalysisResult signal, CandidateCategory category) {

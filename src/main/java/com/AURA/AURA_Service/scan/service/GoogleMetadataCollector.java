@@ -88,6 +88,10 @@ public class GoogleMetadataCollector {
 	}
 
 	public List<CollectedItem> collect(Long userId, ScanCondition condition) {
+		return collect(userId, condition, ScanProgressListener.none());
+	}
+
+	public List<CollectedItem> collect(Long userId, ScanCondition condition, ScanProgressListener progressListener) {
 		User user = userRepository.findById(userId).orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
 			.orElseThrow(() -> permissionException(condition.getScanSource()));
@@ -100,14 +104,17 @@ public class GoogleMetadataCollector {
 
 		log.info("Google metadata scan started. userId={}, scanSource={}", userId, condition.getScanSource());
 		List<CollectedItem> items = new ArrayList<>();
-		if (requiresGmail(condition.getScanSource())) items.addAll(collectGmail(googleToken.accessToken(), condition));
-		if (requiresDrive(condition.getScanSource())) items.addAll(collectDrive(googleToken.accessToken(), condition));
+		MetadataProgressTracker progressTracker = new MetadataProgressTracker(progressListener,
+			requiresGmail(condition.getScanSource()), requiresDrive(condition.getScanSource()), gmailMaxMessages, driveMaxFiles);
+		if (requiresGmail(condition.getScanSource())) items.addAll(collectGmail(googleToken.accessToken(), condition, progressTracker));
+		if (requiresDrive(condition.getScanSource())) items.addAll(collectDrive(googleToken.accessToken(), condition, progressTracker));
+		progressTracker.finish();
 		log.info("Google metadata scan finished. userId={}, totalCount={}, mailCount={}, driveCount={}",
 			userId, items.size(), countBySource(items, ItemSource.GMAIL), countBySource(items, ItemSource.DRIVE));
 		return items;
 	}
 
-	private List<CollectedItem> collectGmail(String accessToken, ScanCondition condition) {
+	private List<CollectedItem> collectGmail(String accessToken, ScanCondition condition, MetadataProgressTracker progressTracker) {
 		try {
 			Gmail gmail = createGmail(accessToken);
 			List<CollectedItem> items = new ArrayList<>();
@@ -120,6 +127,7 @@ public class GoogleMetadataCollector {
 					.setFields(GMAIL_LIST_FIELDS)
 					.setPageToken(currentPageToken)
 					.execute());
+				progressTracker.updateGmailExpected(response.getResultSizeEstimate());
 				if (response.getMessages() != null) {
 					for (Message listedMessage : response.getMessages()) {
 						if (!hasRemaining(items, gmailMaxMessages)) break;
@@ -128,6 +136,7 @@ public class GoogleMetadataCollector {
 							.setMetadataHeaders(List.of("Subject", "From", "Date"))
 							.setFields(GMAIL_MESSAGE_FIELDS)
 							.execute()), condition));
+						progressTracker.incrementMail();
 						logProgress("Gmail metadata scan", items.size());
 					}
 				}
@@ -141,13 +150,13 @@ public class GoogleMetadataCollector {
 		}
 	}
 
-	private List<CollectedItem> collectDrive(String accessToken, ScanCondition condition) {
+	private List<CollectedItem> collectDrive(String accessToken, ScanCondition condition, MetadataProgressTracker progressTracker) {
 		try {
 			Drive drive = createDrive(accessToken);
 			if (condition.getScanSource() == ScanSource.DRIVE_FOLDER) {
-				return collectDriveFolder(drive, condition);
+				return collectDriveFolder(drive, condition, progressTracker);
 			}
-			return collectDriveAll(drive);
+			return collectDriveAll(drive, progressTracker);
 		} catch (GoogleJsonResponseException exception) {
 			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED, createGoogleApiErrorMessage("Drive", exception));
 		} catch (IOException exception) {
@@ -170,7 +179,7 @@ public class GoogleMetadataCollector {
 			+ ", message=" + blankToDefault(message, "no_message") + ")";
 	}
 
-	private List<CollectedItem> collectDriveAll(Drive drive) throws IOException {
+	private List<CollectedItem> collectDriveAll(Drive drive, MetadataProgressTracker progressTracker) throws IOException {
 		List<CollectedItem> items = new ArrayList<>();
 		Map<String, String> folderPathCache = new HashMap<>();
 		String pageToken = null;
@@ -190,6 +199,7 @@ public class GoogleMetadataCollector {
 					if (!hasRemaining(items, driveMaxFiles)) break;
 					String parentId = extractParentId(file);
 					items.add(toDriveItem(file, resolveFolderPath(drive, parentId, folderPathCache)));
+					progressTracker.incrementDrive();
 					logProgress("Drive metadata scan", items.size());
 				}
 			}
@@ -198,7 +208,7 @@ public class GoogleMetadataCollector {
 		return items;
 	}
 
-	private List<CollectedItem> collectDriveFolder(Drive drive, ScanCondition condition) throws IOException {
+	private List<CollectedItem> collectDriveFolder(Drive drive, ScanCondition condition, MetadataProgressTracker progressTracker) throws IOException {
 		List<CollectedItem> items = new ArrayList<>();
 		Deque<DriveFolderScope> folderScopes = new ArrayDeque<>();
 		folderScopes.add(new DriveFolderScope(condition.getDriveFolderId(), loadFolderName(drive, condition.getDriveFolderId())));
@@ -224,6 +234,7 @@ public class GoogleMetadataCollector {
 						}
 						if (!hasRemaining(items, driveMaxFiles)) break;
 						items.add(toDriveItem(file, scope.folderPath()));
+						progressTracker.incrementDrive();
 						logProgress("Drive folder metadata scan", items.size());
 					}
 				}
@@ -571,6 +582,74 @@ public class GoogleMetadataCollector {
 	}
 
 	private record DriveFolderScope(String folderId, String folderPath) {
+	}
+
+	private static class MetadataProgressTracker {
+		private final ScanProgressListener progressListener;
+		private final boolean isGmailRequired;
+		private final boolean isDriveRequired;
+		private final int gmailMaxMessages;
+		private final int driveMaxFiles;
+		private Integer gmailExpectedCount;
+		private Integer driveExpectedCount;
+		private int mailCollectedCount;
+		private int driveCollectedCount;
+
+		private MetadataProgressTracker(ScanProgressListener progressListener, boolean isGmailRequired,
+			boolean isDriveRequired, int gmailMaxMessages, int driveMaxFiles) {
+			this.progressListener = progressListener == null ? ScanProgressListener.none() : progressListener;
+			this.isGmailRequired = isGmailRequired;
+			this.isDriveRequired = isDriveRequired;
+			this.gmailMaxMessages = gmailMaxMessages;
+			this.driveMaxFiles = driveMaxFiles;
+			this.gmailExpectedCount = isGmailRequired && gmailMaxMessages > 0 ? gmailMaxMessages : null;
+			this.driveExpectedCount = isDriveRequired && driveMaxFiles > 0 ? driveMaxFiles : null;
+			report();
+		}
+
+		private void updateGmailExpected(Long resultSizeEstimate) {
+			if (!isGmailRequired || resultSizeEstimate == null || resultSizeEstimate < 0) return;
+			int estimatedCount = resultSizeEstimate > Integer.MAX_VALUE ? Integer.MAX_VALUE : resultSizeEstimate.intValue();
+			int expectedCount = gmailMaxMessages > 0 ? Math.min(gmailMaxMessages, estimatedCount) : estimatedCount;
+			gmailExpectedCount = Math.max(mailCollectedCount, expectedCount);
+			report();
+		}
+
+		private void incrementMail() {
+			mailCollectedCount++;
+			report();
+		}
+
+		private void incrementDrive() {
+			driveCollectedCount++;
+			report();
+		}
+
+		private void finish() {
+			if (isGmailRequired && gmailExpectedCount == null) gmailExpectedCount = mailCollectedCount;
+			if (isDriveRequired && driveExpectedCount == null) driveExpectedCount = driveCollectedCount;
+			report();
+		}
+
+		private void report() {
+			int collectedCount = mailCollectedCount + driveCollectedCount;
+			int expectedCount = expectedCount();
+			if (expectedCount <= 0) return;
+			progressListener.onMetadataProgress(collectedCount, expectedCount);
+		}
+
+		private int expectedCount() {
+			int expectedCount = 0;
+			if (isGmailRequired) expectedCount += sourceExpectedCount(gmailExpectedCount, mailCollectedCount);
+			if (isDriveRequired) expectedCount += sourceExpectedCount(driveExpectedCount, driveCollectedCount);
+			return expectedCount;
+		}
+
+		private int sourceExpectedCount(Integer expectedCount, int collectedCount) {
+			if (expectedCount != null) return Math.max(expectedCount, collectedCount);
+			if (collectedCount <= 0) return PAGE_SIZE;
+			return collectedCount + PAGE_SIZE;
+		}
 	}
 
 	@FunctionalInterface
