@@ -247,7 +247,6 @@ public class AnalysisDecisionEngine {
 	}
 
 	private ProtectionSignal findProtectionSignal(ScannedItem item, ScanCondition condition, String userEmail, GeminiAnalysisResult signal) {
-		if (signal.protectedHint()) return new ProtectionSignal(true, "gemini_protected_hint");
 		if (item.getItemSource() == ItemSource.GMAIL && (item.isStarred() || item.isImportant())) {
 			return new ProtectionSignal(true, "starred_or_important_mail");
 		}
@@ -371,7 +370,6 @@ public class AnalysisDecisionEngine {
 		if (!directIncludeMatches.isEmpty()) score += 4;
 		else if (!semanticIncludeMatches.isEmpty()) score += 3;
 		if (signal.cleanupHint()) score += 3;
-		if (signal.protectedHint()) score -= 15;
 		score -= riskPenalty(riskLevel);
 		return scoreOf(score);
 	}
@@ -454,8 +452,19 @@ public class AnalysisDecisionEngine {
 	private boolean isLowRiskPromotion(ScannedItem item, GeminiAnalysisResult signal) {
 		if (signal.confidenceScore() != null && signal.confidenceScore().compareTo(LOW_RISK_PROMOTION_CONFIDENCE) >= 0) return true;
 		String searchText = item.toSearchText().toLowerCase(Locale.ROOT);
+		if (containsLowRiskPromotionSignal(searchText)) return true;
+		return signal.semanticTags().stream()
+			.map(tag -> tag.toLowerCase(Locale.ROOT))
+			.anyMatch(this::containsLowRiskPromotionSignal);
+	}
+
+	private boolean containsLowRiskPromotionSignal(String searchText) {
 		return searchText.contains("category_promotions") || searchText.contains("newsletter")
-			|| searchText.contains("noreply") || searchText.contains("no-reply");
+			|| searchText.contains("promotion") || searchText.contains("ad") || searchText.contains("coupon")
+			|| searchText.contains("noreply") || searchText.contains("no-reply")
+			|| searchText.contains("\uB274\uC2A4\uB808\uD130") || searchText.contains("\uAD11\uACE0")
+			|| searchText.contains("\uD504\uB85C\uBAA8\uC158") || searchText.contains("\uCFE0\uD3F0")
+			|| searchText.contains("\uC774\uBCA4\uD2B8");
 	}
 
 	private String normalizeDuplicateTitle(String title) {

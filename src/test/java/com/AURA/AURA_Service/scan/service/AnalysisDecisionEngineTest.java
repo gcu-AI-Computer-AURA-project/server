@@ -35,6 +35,20 @@ class AnalysisDecisionEngineTest {
 	}
 
 	@Test
+	void promotionMailWithNewsletterSemanticTagUsesLowRisk() {
+		ScannedItem item = gmailItemFromSender("mail-newsletter-1",
+			"Gachon startup college message Vol. 2", "inbox", "school@example.edu", 0L);
+		GeminiAnalysisResult signal = signal(item, CandidateCategory.PROMOTION_MAIL, true, false, "85.00",
+			List.of("newsletter"));
+
+		CandidateDecision decision = analysisDecisionEngine.decide(List.of(item), generalCondition(),
+			bundle(item, signal), "user@example.com").get(0);
+
+		assertEquals(CandidateCategory.PROMOTION_MAIL, decision.category());
+		assertEquals(RiskLevel.LOW, decision.riskLevel());
+	}
+
+	@Test
 	void oldLargeDriveFileUsesSizeForPriorityWithoutChangingGhostMeaning() {
 		LocalDateTime now = LocalDateTime.now();
 		ScannedItem item = ScannedItem.create(null, null, ItemSource.DRIVE, "drive-1", null,
@@ -113,6 +127,32 @@ class AnalysisDecisionEngineTest {
 		assertEquals("MISSING", decision.matchedConditions().get("gemini_response_status"));
 	}
 
+	@Test
+	void zeroConfidenceProtectedHintDoesNotOverridePeriodRule() {
+		ScannedItem item = gmailItemFromSender("mail-protected-empty-1",
+			"Legacy service update", "inbox", "notice@example.com", 0L);
+		GeminiAnalysisResult signal = signal(item, CandidateCategory.PROTECTED, false, true, "0.00", List.of());
+
+		CandidateDecision decision = analysisDecisionEngine.decide(List.of(item), periodCondition(),
+			bundle(item, signal), "user@example.com").get(0);
+
+		assertEquals(CandidateCategory.OLD_MAIL, decision.category());
+		assertEquals(false, decision.isProtected());
+	}
+
+	@Test
+	void protectedHintWithoutExcludeKeywordDoesNotOverridePeriodRule() {
+		ScannedItem item = gmailItemFromSender("mail-protected-hint-1",
+			"University newsletter archive", "inbox", "notice@example.edu", 0L);
+		GeminiAnalysisResult signal = signal(item, CandidateCategory.PROTECTED, false, true, "95.00", List.of("school"));
+
+		CandidateDecision decision = analysisDecisionEngine.decide(List.of(item), periodCondition(),
+			bundle(item, signal), "user@example.com").get(0);
+
+		assertEquals(CandidateCategory.OLD_MAIL, decision.category());
+		assertEquals(false, decision.isProtected());
+	}
+
 	private ScanCondition generalCondition() {
 		return ScanCondition.fromSnapshot(Map.of(
 			"scan_source", ScanSource.MAIL_AND_DRIVE.name(),
@@ -138,6 +178,14 @@ class AnalysisDecisionEngineTest {
 	private ScannedItem gmailItem(String externalItemId, String title, String labelText, long attachmentSizeBytes) {
 		return ScannedItem.create(null, null, ItemSource.GMAIL, externalItemId, null, null, title,
 			"noreply@example.com", labelText, "오늘만 제공되는 특가 안내", "message/rfc822", null, 0L,
+			attachmentSizeBytes, LocalDateTime.now().minusYears(2), null, null, null, false, false,
+			attachmentSizeBytes > 0, false, null, "user@example.com", false, null, Map.of());
+	}
+
+	private ScannedItem gmailItemFromSender(String externalItemId, String title, String labelText, String senderEmail,
+		long attachmentSizeBytes) {
+		return ScannedItem.create(null, null, ItemSource.GMAIL, externalItemId, null, null, title,
+			senderEmail, labelText, "AURA cleanup test mail snippet", "message/rfc822", null, 0L,
 			attachmentSizeBytes, LocalDateTime.now().minusYears(2), null, null, null, false, false,
 			attachmentSizeBytes > 0, false, null, "user@example.com", false, null, Map.of());
 	}

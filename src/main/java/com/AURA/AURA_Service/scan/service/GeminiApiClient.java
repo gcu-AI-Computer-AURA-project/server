@@ -67,6 +67,15 @@ public class GeminiApiClient {
 				log.warn("Gemini response missed items. requestedCount={}, missingCount={}", items.size(), missingItems.size());
 				results.putAll(requestAnalysis(missingItems, condition, true));
 			}
+			List<ScannedItem> lowQualityItems = findLowQualityProtectedItems(items, results);
+			if (!lowQualityItems.isEmpty()) {
+				log.warn("Gemini response returned low-quality protected items. requestedCount={}, lowQualityCount={}",
+					items.size(), lowQualityItems.size());
+				for (ScannedItem item : lowQualityItems) {
+					results.remove(item.getClientItemKey());
+				}
+				results.putAll(requestAnalysis(lowQualityItems, condition, true));
+			}
 			List<ScannedItem> finalMissingItems = findMissingItems(items, results);
 			if (!finalMissingItems.isEmpty()) {
 				log.warn("Gemini response still missed items after retry. missingKeys={}", finalMissingItems.stream()
@@ -105,6 +114,24 @@ public class GeminiApiClient {
 		return items.stream()
 			.filter(item -> !results.containsKey(item.getClientItemKey()))
 			.toList();
+	}
+
+	private List<ScannedItem> findLowQualityProtectedItems(List<ScannedItem> items, Map<String, GeminiAnalysisResult> results) {
+		return items.stream()
+			.filter(item -> isLowQualityProtectedResult(results.get(item.getClientItemKey())))
+			.toList();
+	}
+
+	private boolean isLowQualityProtectedResult(GeminiAnalysisResult result) {
+		if (result == null || result.responseStatus() != GeminiAnalysisResult.ResponseStatus.SUCCESS) return false;
+		if (result.suggestedCategory() != CandidateCategory.PROTECTED || !result.protectedHint()) return false;
+		if (result.confidenceScore() == null || result.confidenceScore().compareTo(BigDecimal.ZERO) > 0) return false;
+		return isEmpty(result.semanticTags()) && isEmpty(result.includeKeywordMatches())
+			&& isEmpty(result.excludeKeywordMatches());
+	}
+
+	private boolean isEmpty(List<?> values) {
+		return values == null || values.isEmpty();
 	}
 
 	private Map<String, GeminiAnalysisResult> filterRequestedResults(List<ScannedItem> items,
@@ -172,7 +199,7 @@ public class GeminiApiClient {
 		payload.put("conditions", createConditionPayload(condition));
 		payload.put("items", items.stream().map(this::createItemPayload).toList());
 		String retryInstruction = retry
-			? "This is a retry for previously missing items. Return exactly these missing items and no other keys."
+			? "This is a retry for previously missing or low-quality items. Return exactly these items and no other keys. Avoid zero-confidence PROTECTED output unless visible metadata clearly supports protection."
 			: "Return exactly one output object for every input item.";
 		return """
 			You are AURA's metadata-only cleanup classifier.
@@ -181,7 +208,13 @@ public class GeminiApiClient {
 			%s
 			The output items array length must equal the input items array length.
 			Each output item must preserve client_item_key exactly. Never shorten, translate, reorder, omit, or modify client_item_key.
-			If an item is uncertain, still return it with suggested_category PROTECTED, cleanup_hint false, protected_hint true, confidence_score 0, semantic_tags [], include_keyword_matches [], exclude_keyword_matches [].
+			Do not classify an item as PROTECTED only because it is uncertain.
+			Do not classify an item as PROTECTED only because it does not match include_keywords.
+			Use protected_hint true only when the item directly or semantically matches exclude_keywords.
+			If exclude_keywords is empty or unrelated to the item, protected_hint must be false.
+			Old items and duplicate-like items are cleanup candidates by default unless they match exclude_keywords or explicit metadata protection rules.
+			If an item is uncertain, choose OLD_MAIL for GMAIL or OLD_DRIVE_FILE for DRIVE, set cleanup_hint false, protected_hint false, confidence_score between 0 and 30, and still provide semantic_tags.
+			semantic_tags must contain 1 to 4 short tags derived from visible metadata, source, or category. Do not return an empty semantic_tags array unless every visible metadata field is empty.
 			Allowed suggested_category values are PROMOTION_MAIL, OLD_MAIL, DUPLICATE_FILE, OLD_DRIVE_FILE, LARGE_FILE, LOW_VALUE_ATTACHMENT, TEMP_OR_BACKUP, PROTECTED.
 			Use include_keyword_matches and exclude_keyword_matches for direct or semantic keyword relations.
 			Schema:
