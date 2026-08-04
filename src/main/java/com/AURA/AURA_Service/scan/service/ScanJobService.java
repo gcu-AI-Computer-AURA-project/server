@@ -16,6 +16,7 @@ import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.domain.ScanJob;
 import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
+import com.AURA.AURA_Service.scan.dto.ScanCancelResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
 import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
@@ -94,6 +95,18 @@ public class ScanJobService {
 		ScanJob scanJob = scanJobRepository.findByScanJobIdAndUserAndDeletedAtIsNull(scanJobId, user)
 			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
 		return ScanJobDetailResponse.from(scanJob);
+	}
+
+	@Transactional
+	public ScanCancelResponse cancel(Long userId, Long scanJobId) {
+		User user = findUser(userId);
+		ScanJob scanJob = scanJobRepository.findByScanJobIdAndUserAndDeletedAtIsNull(scanJobId, user)
+			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
+		if (!RUNNING_STATUSES.contains(scanJob.getJobStatus())) {
+			throw new CustomException(ErrorCode.SCAN_CANCEL_NOT_ALLOWED);
+		}
+		scanJob.markCanceled();
+		return ScanCancelResponse.from(scanJob);
 	}
 
 	private void launchAfterCommit(Long scanJobId) {

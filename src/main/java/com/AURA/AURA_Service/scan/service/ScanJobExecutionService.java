@@ -54,9 +54,12 @@ public class ScanJobExecutionService {
 		ScanProgressListener progressListener = new PersistentScanProgressListener(scanJobId);
 		try {
 			List<CollectedItem> collectedItems = googleMetadataCollector.collect(context.userId(), context.condition(), progressListener);
+			if (isCanceled(scanJobId)) return;
 			List<ScannedItem> scannedItems = saveScannedItems(scanJobId, context.userId(), collectedItems);
+			if (isCanceled(scanJobId)) return;
 			if (geminiSemanticAnalyzer.isRequiredButNotConfigured()) throw new CustomException(ErrorCode.GEMINI_API_CALL_FAILED);
 			GeminiAnalysisBundle analysisBundle = geminiSemanticAnalyzer.analyze(scannedItems, context.condition(), progressListener);
+			if (isCanceled(scanJobId)) return;
 			List<CandidateDecision> decisions = analysisDecisionEngine.decide(scannedItems, context.condition(), analysisBundle,
 				context.userEmail());
 			saveCandidatesAndFinish(scanJobId, decisions, analysisBundle);
@@ -79,6 +82,7 @@ public class ScanJobExecutionService {
 	private List<ScannedItem> saveScannedItems(Long scanJobId, Long userId, List<CollectedItem> collectedItems) {
 		return transactionTemplate.execute(status -> {
 			ScanJob scanJob = findScanJob(scanJobId);
+			if (scanJob.getJobStatus() == JobStatus.CANCELED) return List.of();
 			User user = userRepository.findById(userId).orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 			List<ScannedItem> scannedItems = collectedItems.stream()
 				.map(item -> item.toScannedItem(scanJob, user))
@@ -94,6 +98,7 @@ public class ScanJobExecutionService {
 	private void saveCandidatesAndFinish(Long scanJobId, List<CandidateDecision> decisions, GeminiAnalysisBundle analysisBundle) {
 		transactionTemplate.executeWithoutResult(status -> {
 			ScanJob scanJob = findScanJob(scanJobId);
+			if (scanJob.getJobStatus() == JobStatus.CANCELED) return;
 			Map<Long, ScannedItem> itemMap = scannedItemRepository.findAllById(decisions.stream()
 					.map(CandidateDecision::itemId)
 					.toList())
@@ -128,7 +133,11 @@ public class ScanJobExecutionService {
 	}
 
 	private void failScan(Long scanJobId, RuntimeException exception) {
-		transactionTemplate.executeWithoutResult(status -> findScanJob(scanJobId).markFailed(exception.getMessage()));
+		transactionTemplate.executeWithoutResult(status -> {
+			ScanJob scanJob = findScanJob(scanJobId);
+			if (scanJob.getJobStatus() == JobStatus.CANCELED) return;
+			scanJob.markFailed(exception.getMessage());
+		});
 	}
 
 	private void updateScanningProgress(Long scanJobId, BigDecimal progressPercent) {
@@ -141,6 +150,10 @@ public class ScanJobExecutionService {
 
 	private ScanJob findScanJob(Long scanJobId) {
 		return scanJobRepository.findById(scanJobId).orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
+	}
+
+	private boolean isCanceled(Long scanJobId) {
+		return Boolean.TRUE.equals(transactionTemplate.execute(status -> findScanJob(scanJobId).getJobStatus() == JobStatus.CANCELED));
 	}
 
 	private int countBySource(List<ScannedItem> items, ItemSource itemSource) {
