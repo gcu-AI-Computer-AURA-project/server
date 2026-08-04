@@ -62,6 +62,14 @@ public class ScanJob {
 	public ScanSource getScanSource() { return scanSource; }
 	public Map<String, Object> getConditionSnapshot() { return conditionSnapshot; }
 	public BigDecimal getProgressPercent() { return progressPercent; }
+	public Integer getMailScannedCount() { return mailScannedCount; }
+	public Integer getDriveScannedCount() { return driveScannedCount; }
+	public Integer getCandidateCount() { return candidateCount; }
+	public Integer getProtectedCount() { return protectedCount; }
+	public Long getEstimatedReclaimBytes() { return estimatedReclaimBytes; }
+	public String getErrorMessage() { return errorMessage; }
+	public LocalDateTime getStartedAt() { return startedAt; }
+	public LocalDateTime getCompletedAt() { return completedAt; }
 	public LocalDateTime getCreatedAt() { return createdAt; }
 
 	/**

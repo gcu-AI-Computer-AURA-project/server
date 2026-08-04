@@ -18,8 +18,15 @@ import com.AURA.AURA_Service.scan.domain.ScanJob;
 import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
+import com.AURA.AURA_Service.scan.dto.ScanRunningJobResponse;
+import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
 import com.AURA.AURA_Service.scan.dto.ScanSettingsOverrideRequest;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +77,23 @@ public class ScanJobService {
 		ScanJob savedScanJob = scanJobRepository.save(scanJob);
 		launchAfterCommit(savedScanJob.getScanJobId());
 		return ScanCreateResponse.from(savedScanJob);
+	}
+
+	@Transactional(readOnly = true)
+	public ScanRunningResponse getRunning(Long userId) {
+		User user = findUser(userId);
+		return scanJobRepository.findFirstByUserAndJobStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(user, RUNNING_STATUSES)
+			.map(scanJob -> ScanRunningResponse.from(ScanRunningJobResponse.from(scanJob,
+				estimateRemainingSeconds(scanJob))))
+			.orElseGet(ScanRunningResponse::empty);
+	}
+
+	@Transactional(readOnly = true)
+	public ScanJobDetailResponse getDetail(Long userId, Long scanJobId) {
+		User user = findUser(userId);
+		ScanJob scanJob = scanJobRepository.findByScanJobIdAndUserAndDeletedAtIsNull(scanJobId, user)
+			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
+		return ScanJobDetailResponse.from(scanJob);
 	}
 
 	private void launchAfterCommit(Long scanJobId) {
@@ -145,6 +169,24 @@ public class ScanJobService {
 
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
+	}
+
+	private Long estimateRemainingSeconds(ScanJob scanJob) {
+		LocalDateTime startedAt = scanJob.getStartedAt();
+		BigDecimal progressPercent = scanJob.getProgressPercent();
+		if (startedAt == null || progressPercent == null || progressPercent.compareTo(BigDecimal.ZERO) <= 0) {
+			return null;
+		}
+
+		long elapsedSeconds = Duration.between(startedAt, LocalDateTime.now()).getSeconds();
+		if (elapsedSeconds <= 0 || progressPercent.compareTo(new BigDecimal("100.00")) >= 0) {
+			return 0L;
+		}
+
+		return BigDecimal.valueOf(elapsedSeconds)
+			.multiply(new BigDecimal("100.00").subtract(progressPercent))
+			.divide(progressPercent, 0, RoundingMode.HALF_UP)
+			.longValue();
 	}
 
 	private record AppliedScanCondition(ScanSetting scanSetting, ScanCondition condition) {

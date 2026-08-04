@@ -3,12 +3,16 @@ package com.AURA.AURA_Service.scan.controller;
 import com.AURA.AURA_Service.common.ApiResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
+import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
 import com.AURA.AURA_Service.scan.service.ScanJobService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.net.URI;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,5 +34,20 @@ public class ScanJobController {
 		ScanCreateResponse response = scanJobService.create(Long.valueOf(userId), request);
 		return ResponseEntity.created(URI.create("/api/scans/" + response.scanJobId()))
 			.body(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "진행 중인 스캔 조회", description = "현재 사용자에게 진행 중인 스캔 작업이 있으면 진행 상태를 조회합니다.")
+	@GetMapping("/running")
+	public ResponseEntity<ApiResponse<ScanRunningResponse>> getRunning(@AuthenticationPrincipal String userId) {
+		ScanRunningResponse response = scanJobService.getRunning(Long.valueOf(userId));
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "스캔 작업 상세 조회", description = "선택한 스캔 작업의 상태, 조건 스냅샷, 진행률, 집계 결과를 조회합니다.")
+	@GetMapping("/{scan_job_id}")
+	public ResponseEntity<ApiResponse<ScanJobDetailResponse>> getDetail(@AuthenticationPrincipal String userId,
+		@PathVariable("scan_job_id") Long scanJobId) {
+		ScanJobDetailResponse response = scanJobService.getDetail(Long.valueOf(userId), scanJobId);
+		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 }
