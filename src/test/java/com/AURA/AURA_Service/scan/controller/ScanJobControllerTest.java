@@ -68,8 +68,8 @@ class ScanJobControllerTest {
 					    "last_modified_before_months": 24,
 					    "created_before_months": 6,
 					    "exclude_recent_days": 30,
-					    "include_keywords": ["광고", "프로모션"],
-					    "exclude_keywords": ["영수증", "계약서"],
+					    "include_keywords": ["promotion", "newsletter"],
+					    "exclude_keywords": ["receipt", "contract"],
 					    "file_extensions": ["pdf", "zip"],
 					    "include_mail_attachment_size": true,
 					    "apply_recent_conditions": true

@@ -27,7 +27,7 @@ public class ScanJobController {
 		this.scanJobService = scanJobService;
 	}
 
-	@Operation(summary = "스캔 및 AI 의미 분석 작업 시작", description = "Gmail/Drive 메타데이터 조회와 Gemini API 기반 AI 의미 분석 작업을 생성합니다.")
+	@Operation(summary = "스캔 및 AI 후보 분석 작업 시작", description = "Gmail/Drive 메타데이터 조회와 Gemini API 기반 AI 후보 분석 작업을 생성합니다.")
 	@PostMapping
 	public ResponseEntity<ApiResponse<ScanCreateResponse>> create(@AuthenticationPrincipal String userId,
 		@Valid @RequestBody ScanCreateRequest request) {
