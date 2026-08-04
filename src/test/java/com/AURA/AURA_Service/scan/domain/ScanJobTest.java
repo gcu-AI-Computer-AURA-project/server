@@ -28,4 +28,16 @@ class ScanJobTest {
 
 		assertEquals(new BigDecimal("100.00"), scanJob.getProgressPercent());
 	}
+
+	@Test
+	void canceledScanJobIsNotOverwrittenByTerminalStatus() {
+		ScanJob scanJob = new ScanJob(null, null, ScanSource.MAIL, Map.of());
+
+		scanJob.markScanning();
+		scanJob.markCanceled();
+		scanJob.markCompleted(8, 2, 1024L);
+		scanJob.markFailed("failed");
+
+		assertEquals(ScanJob.JobStatus.CANCELED, scanJob.getJobStatus());
+	}
 }

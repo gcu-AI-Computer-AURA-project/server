@@ -1,6 +1,7 @@
 package com.AURA.AURA_Service.scan.controller;
 
 import com.AURA.AURA_Service.common.ApiResponse;
+import com.AURA.AURA_Service.scan.dto.ScanCancelResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
 import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
@@ -48,6 +49,14 @@ public class ScanJobController {
 	public ResponseEntity<ApiResponse<ScanJobDetailResponse>> getDetail(@AuthenticationPrincipal String userId,
 		@PathVariable("scan_job_id") Long scanJobId) {
 		ScanJobDetailResponse response = scanJobService.getDetail(Long.valueOf(userId), scanJobId);
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "스캔 취소", description = "진행 중인 스캔 작업을 취소 상태로 변경합니다.")
+	@PostMapping("/{scan_job_id}/cancel")
+	public ResponseEntity<ApiResponse<ScanCancelResponse>> cancel(@AuthenticationPrincipal String userId,
+		@PathVariable("scan_job_id") Long scanJobId) {
+		ScanCancelResponse response = scanJobService.cancel(Long.valueOf(userId), scanJobId);
 		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 }

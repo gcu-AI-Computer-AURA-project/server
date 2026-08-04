@@ -18,6 +18,7 @@ public enum ErrorCode {
 	USER_ALREADY_WITHDRAWN(HttpStatus.CONFLICT, "USER-002", "이미 탈퇴 처리된 사용자입니다."),
 	SCAN_ALREADY_RUNNING(HttpStatus.CONFLICT, "SCAN-001", "이미 진행 중인 스캔이 있습니다."),
 	SCAN_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-002", "스캔 작업을 찾을 수 없습니다."),
+	SCAN_CANCEL_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "SCAN-003", "취소할 수 없는 스캔 상태입니다."),
 	SCAN_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-004", "기본 스캔 조건을 찾을 수 없습니다."),
 	DRIVE_FOLDER_REQUIRED(HttpStatus.BAD_REQUEST, "SCAN-005", "Drive 폴더 스캔에는 폴더 ID가 필요합니다."),
 	GMAIL_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-001", "Gmail 권한이 필요합니다."),

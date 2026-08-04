@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.AURA.AURA_Service.auth.domain.ScanSetting.ScanSource;
 import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
+import com.AURA.AURA_Service.scan.dto.ScanCancelResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
 import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
@@ -186,5 +187,23 @@ class ScanJobControllerTest {
 				  }
 				}
 				"""));
+	}
+
+	@Test
+	void cancelReturnsCanceledScanJobResponse() throws Exception {
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("1", null, List.of()));
+		when(scanJobService.cancel(1L, 15L)).thenReturn(new ScanCancelResponse(
+			15L,
+			JobStatus.CANCELED,
+			LocalDateTime.of(2026, 7, 14, 10, 45, 0)
+		));
+
+		mockMvc.perform(post("/api/scans/15/cancel")
+				.principal(new UsernamePasswordAuthenticationToken("1", null)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.scan_job_id").value(15))
+			.andExpect(jsonPath("$.data.job_status").value("CANCELED"))
+			.andExpect(jsonPath("$.data.canceled_at").value("2026-07-14T10:45:00"));
 	}
 }

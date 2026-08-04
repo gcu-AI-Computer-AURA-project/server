@@ -70,6 +70,7 @@ public class ScanJob {
 	public String getErrorMessage() { return errorMessage; }
 	public LocalDateTime getStartedAt() { return startedAt; }
 	public LocalDateTime getCompletedAt() { return completedAt; }
+	public LocalDateTime getCanceledAt() { return canceledAt; }
 	public LocalDateTime getCreatedAt() { return createdAt; }
 
 	/**
@@ -82,6 +83,7 @@ public class ScanJob {
 	 * @author : 최준혁
 	 */
 	public void markScanning() {
+		if (this.jobStatus == JobStatus.CANCELED) return;
 		this.jobStatus = JobStatus.SCANNING;
 		this.progressPercent = new BigDecimal("0.00");
 		this.startedAt = LocalDateTime.now();
@@ -93,6 +95,7 @@ public class ScanJob {
 	}
 
 	public void markAnalyzing(int mailScannedCount, int driveScannedCount) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
 		this.jobStatus = JobStatus.ANALYZING;
 		updateProgress(new BigDecimal("50.00"), new BigDecimal("50.00"), new BigDecimal("50.00"));
 		this.mailScannedCount = mailScannedCount;
@@ -105,6 +108,7 @@ public class ScanJob {
 	}
 
 	public void markCompleted(int candidateCount, int protectedCount, long estimatedReclaimBytes) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
 		this.jobStatus = JobStatus.COMPLETED;
 		this.progressPercent = new BigDecimal("100.00");
 		this.candidateCount = candidateCount;
@@ -114,6 +118,7 @@ public class ScanJob {
 	}
 
 	public void markPartialFailed(int candidateCount, int protectedCount, long estimatedReclaimBytes, String errorMessage) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
 		this.jobStatus = JobStatus.PARTIAL_FAILED;
 		this.progressPercent = new BigDecimal("100.00");
 		this.candidateCount = candidateCount;
@@ -124,9 +129,17 @@ public class ScanJob {
 	}
 
 	public void markFailed(String errorMessage) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
 		this.jobStatus = JobStatus.FAILED;
 		this.errorMessage = trimErrorMessage(errorMessage);
 		this.completedAt = LocalDateTime.now();
+	}
+
+	public void markCanceled() {
+		this.jobStatus = JobStatus.CANCELED;
+		this.canceledAt = LocalDateTime.now();
+		this.completedAt = null;
+		this.errorMessage = null;
 	}
 
 	private String trimErrorMessage(String value) {
