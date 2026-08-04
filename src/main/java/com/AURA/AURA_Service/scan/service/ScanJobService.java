@@ -18,6 +18,7 @@ import com.AURA.AURA_Service.scan.domain.ScanJob;
 import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningJobResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
 import com.AURA.AURA_Service.scan.dto.ScanSettingsOverrideRequest;
@@ -85,6 +86,14 @@ public class ScanJobService {
 			.map(scanJob -> ScanRunningResponse.from(ScanRunningJobResponse.from(scanJob,
 				estimateRemainingSeconds(scanJob))))
 			.orElseGet(ScanRunningResponse::empty);
+	}
+
+	@Transactional(readOnly = true)
+	public ScanJobDetailResponse getDetail(Long userId, Long scanJobId) {
+		User user = findUser(userId);
+		ScanJob scanJob = scanJobRepository.findByScanJobIdAndUserAndDeletedAtIsNull(scanJobId, user)
+			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
+		return ScanJobDetailResponse.from(scanJob);
 	}
 
 	private void launchAfterCommit(Long scanJobId) {

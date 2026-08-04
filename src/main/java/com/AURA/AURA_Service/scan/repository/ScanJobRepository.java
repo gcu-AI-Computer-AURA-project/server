@@ -12,4 +12,6 @@ public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
 
 	Optional<ScanJob> findFirstByUserAndJobStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(User user,
 		Collection<JobStatus> jobStatuses);
+
+	Optional<ScanJob> findByScanJobIdAndUserAndDeletedAtIsNull(Long scanJobId, User user);
 }
