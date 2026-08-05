@@ -100,4 +100,27 @@ public interface AnalysisCandidateRepository extends JpaRepository<AnalysisCandi
 		""")
 	CandidateSelectionSummary summarizeSelectedByScanJobId(@Param("scanJobId") Long scanJobId,
 		@Param("selectionStatus") SelectionStatus selectionStatus);
+
+	@Query("""
+		select candidate
+		from AnalysisCandidate candidate
+		join fetch candidate.scannedItem item
+		where candidate.scanJob.scanJobId = :scanJobId
+			and candidate.selectionStatus = :selectionStatus
+		order by
+			item.itemSource asc,
+			candidate.priorityScore desc,
+			candidate.candidateId asc
+		""")
+	List<AnalysisCandidate> findSelectedCandidates(@Param("scanJobId") Long scanJobId,
+		@Param("selectionStatus") SelectionStatus selectionStatus);
+
+	@Query("""
+		select candidate
+		from AnalysisCandidate candidate
+		where candidate.scanJob.scanJobId = :scanJobId
+			and candidate.isProtected = true
+		order by candidate.candidateId asc
+		""")
+	List<AnalysisCandidate> findProtectedCandidates(@Param("scanJobId") Long scanJobId);
 }

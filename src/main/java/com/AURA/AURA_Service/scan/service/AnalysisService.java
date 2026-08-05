@@ -15,10 +15,13 @@ import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionRequest;
 import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionResponse;
 import com.AURA.AURA_Service.scan.dto.CandidateSelectionRequest;
 import com.AURA.AURA_Service.scan.dto.CandidateSelectionResponse;
+import com.AURA.AURA_Service.scan.dto.SelectedCandidateResponse;
 import com.AURA.AURA_Service.scan.repository.AnalysisCandidateRepository;
 import com.AURA.AURA_Service.scan.repository.CandidateSelectionSummary;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.data.domain.PageRequest;
@@ -94,6 +97,16 @@ public class AnalysisService {
 		return CandidateBulkSelectionResponse.from(candidates.size(), summary);
 	}
 
+	@Transactional(readOnly = true)
+	public SelectedCandidateResponse getSelectedCandidates(Long userId, Long scanJobId) {
+		findUserScanJob(userId, scanJobId);
+		List<AnalysisCandidate> selectedCandidates = analysisCandidateRepository.findSelectedCandidates(scanJobId,
+			SelectionStatus.SELECTED);
+		List<AnalysisCandidate> protectedCandidates = analysisCandidateRepository.findProtectedCandidates(scanJobId);
+		return SelectedCandidateResponse.from(scanJobId, selectedCandidates, protectedCandidates,
+			extractProtectedConditions(protectedCandidates));
+	}
+
 	private ScanJob findUserScanJob(Long userId, Long scanJobId) {
 		return scanJobRepository.findByScanJobIdAndUser_UserIdAndDeletedAtIsNull(scanJobId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
@@ -137,5 +150,45 @@ public class AnalysisService {
 			return List.of(-1L);
 		}
 		return candidateIds;
+	}
+
+	private List<String> extractProtectedConditions(List<AnalysisCandidate> protectedCandidates) {
+		Set<String> conditions = new LinkedHashSet<>();
+		for (AnalysisCandidate candidate : protectedCandidates) {
+			Map<String, Object> matchedConditions = candidate.getMatchedConditions();
+			if (matchedConditions == null) {
+				continue;
+			}
+			addProtectedRuleCondition(conditions, matchedConditions.get("rule"));
+			addKeywordConditions(conditions, matchedConditions.get("direct_exclude_keyword_matches"));
+			addKeywordConditions(conditions, matchedConditions.get("semantic_exclude_keyword_matches"));
+		}
+		return List.copyOf(conditions);
+	}
+
+	private void addProtectedRuleCondition(Set<String> conditions, Object rule) {
+		if (!(rule instanceof String ruleName)) {
+			return;
+		}
+		switch (ruleName) {
+			case "exclude_keyword" -> conditions.add("제외 키워드 포함");
+			case "starred_or_important_mail" -> conditions.add("별표 또는 중요 표시");
+			case "shared_drive_file" -> conditions.add("공유 Drive 파일");
+			case "owner_mismatch" -> conditions.add("소유자 불일치");
+			case "recent_activity" -> conditions.add("최근 사용 항목");
+			default -> conditions.add(ruleName);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private void addKeywordConditions(Set<String> conditions, Object keywords) {
+		if (!(keywords instanceof List<?> keywordList) || keywordList.isEmpty()) {
+			return;
+		}
+		keywordList.stream()
+			.filter(String.class::isInstance)
+			.map(String.class::cast)
+			.map(keyword -> "제외 키워드: " + keyword)
+			.forEach(conditions::add);
 	}
 }
