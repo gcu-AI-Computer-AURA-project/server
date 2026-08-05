@@ -32,4 +32,11 @@ public class CleanupHistory {
 	@Column(name = "completed_at", nullable = false) private LocalDateTime completedAt;
 
 	protected CleanupHistory() { }
+
+	public Long getHistoryId() { return historyId; }
+	public Long getCleanupJobId() { return cleanupJob.getCleanupJobId(); }
+	public Integer getCleanedItemCount() { return cleanedItemCount; }
+	public Long getReclaimedBytes() { return reclaimedBytes; }
+	public Long getRemainingDriveBytes() { return remainingDriveBytes; }
+	public LocalDateTime getCompletedAt() { return completedAt; }
 }

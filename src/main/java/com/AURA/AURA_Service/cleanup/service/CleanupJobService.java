@@ -2,13 +2,18 @@ package com.AURA.AURA_Service.cleanup.service;
 
 import com.AURA.AURA_Service.auth.domain.User;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
+import com.AURA.AURA_Service.cleanup.domain.CarbonSavingHistory;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJob;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJob.ActionType;
+import com.AURA.AURA_Service.cleanup.domain.CleanupHistory;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
+import com.AURA.AURA_Service.cleanup.repository.CarbonSavingHistoryRepository;
+import com.AURA.AURA_Service.cleanup.repository.CleanupHistoryRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
 import com.AURA.AURA_Service.common.CustomException;
@@ -33,15 +38,21 @@ public class CleanupJobService {
 	private final AnalysisCandidateRepository analysisCandidateRepository;
 	private final CleanupJobRepository cleanupJobRepository;
 	private final CleanupJobItemRepository cleanupJobItemRepository;
+	private final CleanupHistoryRepository cleanupHistoryRepository;
+	private final CarbonSavingHistoryRepository carbonSavingHistoryRepository;
 
 	public CleanupJobService(UserRepository userRepository,
 		AnalysisCandidateRepository analysisCandidateRepository,
 		CleanupJobRepository cleanupJobRepository,
-		CleanupJobItemRepository cleanupJobItemRepository) {
+		CleanupJobItemRepository cleanupJobItemRepository,
+		CleanupHistoryRepository cleanupHistoryRepository,
+		CarbonSavingHistoryRepository carbonSavingHistoryRepository) {
 		this.userRepository = userRepository;
 		this.analysisCandidateRepository = analysisCandidateRepository;
 		this.cleanupJobRepository = cleanupJobRepository;
 		this.cleanupJobItemRepository = cleanupJobItemRepository;
+		this.cleanupHistoryRepository = cleanupHistoryRepository;
+		this.carbonSavingHistoryRepository = carbonSavingHistoryRepository;
 	}
 
 	@Transactional
@@ -90,6 +101,17 @@ public class CleanupJobService {
 		List<CleanupJobItem> cleanupJobItems = cleanupJobItemRepository
 			.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJobId);
 		return CleanupJobItemListResponse.from(cleanupJobItems);
+	}
+
+	@Transactional(readOnly = true)
+	public CleanupJobResultResponse getResult(Long userId, Long cleanupJobId) {
+		CleanupHistory cleanupHistory = cleanupHistoryRepository
+			.findByCleanupJobCleanupJobIdAndUserUserId(cleanupJobId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+		CarbonSavingHistory carbonSavingHistory = carbonSavingHistoryRepository
+			.findByCleanupHistoryHistoryId(cleanupHistory.getHistoryId())
+			.orElse(null);
+		return CleanupJobResultResponse.from(cleanupHistory, carbonSavingHistory);
 	}
 
 	private void validateRequest(CleanupJobCreateRequest request) {
