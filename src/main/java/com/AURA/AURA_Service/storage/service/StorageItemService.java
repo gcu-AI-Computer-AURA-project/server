@@ -6,6 +6,7 @@ import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.domain.ScannedItem;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.scan.repository.ScannedItemRepository;
+import com.AURA.AURA_Service.storage.dto.StorageItemDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemListItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemPageResponse;
 import java.util.List;
@@ -43,6 +44,16 @@ public class StorageItemService {
 			.map(StorageItemListItemResponse::from)
 			.toList();
 		return StorageItemPageResponse.from(items, content);
+	}
+
+	@Transactional(readOnly = true)
+	public StorageItemDetailResponse getItem(Long userId, Long itemId) {
+		if (!userRepository.existsById(userId)) {
+			throw new CustomException(ErrorCode.USER_NOT_FOUND);
+		}
+		ScannedItem item = scannedItemRepository.findDetailByItemIdAndUserId(itemId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
+		return StorageItemDetailResponse.fromSnapshot(item);
 	}
 
 	private Specification<ScannedItem> createSpecification(Long userId, ItemSource itemSource, Boolean trashed) {
