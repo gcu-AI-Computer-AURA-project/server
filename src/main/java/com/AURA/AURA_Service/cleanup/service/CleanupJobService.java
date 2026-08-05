@@ -7,6 +7,7 @@ import com.AURA.AURA_Service.cleanup.domain.CleanupJob.ActionType;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
 import com.AURA.AURA_Service.common.CustomException;
@@ -72,6 +73,13 @@ public class CleanupJobService {
 			.toList();
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
 		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
+	@Transactional(readOnly = true)
+	public CleanupJobDetailResponse getDetail(Long userId, Long cleanupJobId) {
+		CleanupJob cleanupJob = cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+		return CleanupJobDetailResponse.from(cleanupJob);
 	}
 
 	private void validateRequest(CleanupJobCreateRequest request) {
