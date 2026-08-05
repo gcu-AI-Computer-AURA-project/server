@@ -71,4 +71,33 @@ public interface AnalysisCandidateRepository extends JpaRepository<AnalysisCandi
 		@Param("includeProtected") boolean includeProtected,
 		@Param("sort") String sort,
 		Pageable pageable);
+
+	@Query("""
+		select candidate
+		from AnalysisCandidate candidate
+		join candidate.scannedItem item
+		where candidate.scanJob.scanJobId = :scanJobId
+			and (:category is null or candidate.category = :category)
+			and (:itemSource is null or item.itemSource = :itemSource)
+			and (:hasCandidateIds = false or candidate.candidateId in :candidateIds)
+			and (:excludeProtected = false or candidate.isProtected = false)
+		order by candidate.candidateId asc
+		""")
+	List<AnalysisCandidate> findCandidatesForSelection(@Param("scanJobId") Long scanJobId,
+		@Param("category") CandidateCategory category,
+		@Param("itemSource") ItemSource itemSource,
+		@Param("candidateIds") List<Long> candidateIds,
+		@Param("hasCandidateIds") boolean hasCandidateIds,
+		@Param("excludeProtected") boolean excludeProtected);
+
+	@Query("""
+		select
+			count(candidate) as selectedCount,
+			coalesce(sum(candidate.estimatedReclaimBytes), 0) as selectedEstimatedReclaimBytes
+		from AnalysisCandidate candidate
+		where candidate.scanJob.scanJobId = :scanJobId
+			and candidate.selectionStatus = :selectionStatus
+		""")
+	CandidateSelectionSummary summarizeSelectedByScanJobId(@Param("scanJobId") Long scanJobId,
+		@Param("selectionStatus") SelectionStatus selectionStatus);
 }

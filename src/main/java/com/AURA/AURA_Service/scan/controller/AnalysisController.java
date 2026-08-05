@@ -6,12 +6,17 @@ import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.SelectionStatus;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.scan.dto.AnalysisCandidatePageResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisSummaryResponse;
+import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionRequest;
+import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionResponse;
 import com.AURA.AURA_Service.scan.service.AnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,5 +50,15 @@ public class AnalysisController {
 		@RequestParam(defaultValue = "priority_desc") String sort) {
 		return ResponseEntity.ok(ApiResponse.success(analysisService.getCandidates(Long.valueOf(userId), scanJobId,
 			category, itemSource, selectionStatus, includeProtected, page, size, sort)));
+	}
+
+	@Operation(summary = "후보 일괄 선택 상태 변경", description = "스캔 작업의 분석 후보를 조건에 따라 일괄 선택 또는 선택 해제합니다.")
+	@PatchMapping("/{scan_job_id}/candidates/selection")
+	public ResponseEntity<ApiResponse<CandidateBulkSelectionResponse>> updateCandidateSelections(
+		@AuthenticationPrincipal String userId,
+		@PathVariable("scan_job_id") Long scanJobId,
+		@Valid @RequestBody CandidateBulkSelectionRequest request) {
+		return ResponseEntity.ok(ApiResponse.success(analysisService.updateCandidateSelections(Long.valueOf(userId),
+			scanJobId, request)));
 	}
 }

@@ -11,9 +11,12 @@ import com.AURA.AURA_Service.scan.dto.AnalysisCandidateDetailResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisCandidatePageResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisCategorySummaryResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisSummaryResponse;
+import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionRequest;
+import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionResponse;
 import com.AURA.AURA_Service.scan.dto.CandidateSelectionRequest;
 import com.AURA.AURA_Service.scan.dto.CandidateSelectionResponse;
 import com.AURA.AURA_Service.scan.repository.AnalysisCandidateRepository;
+import com.AURA.AURA_Service.scan.repository.CandidateSelectionSummary;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
 import java.util.List;
 import java.util.Objects;
@@ -73,6 +76,24 @@ public class AnalysisService {
 		return CandidateSelectionResponse.from(candidate);
 	}
 
+	@Transactional
+	public CandidateBulkSelectionResponse updateCandidateSelections(Long userId, Long scanJobId,
+		CandidateBulkSelectionRequest request) {
+		findUserScanJob(userId, scanJobId);
+		validateCandidateIds(request.candidateIds());
+		List<Long> candidateIds = resolveCandidateIds(request.candidateIds());
+		List<AnalysisCandidate> candidates = analysisCandidateRepository.findCandidatesForSelection(scanJobId,
+			request.category(), request.itemSource(), candidateIds, request.candidateIds() != null,
+			request.excludeProtected());
+		candidates.forEach(candidate -> {
+			validateProtectedSelection(candidate.isProtected(), request.selectionStatus());
+			candidate.updateSelection(request.selectionStatus());
+		});
+		CandidateSelectionSummary summary = analysisCandidateRepository.summarizeSelectedByScanJobId(scanJobId,
+			SelectionStatus.SELECTED);
+		return CandidateBulkSelectionResponse.from(candidates.size(), summary);
+	}
+
 	private ScanJob findUserScanJob(Long userId, Long scanJobId) {
 		return scanJobRepository.findByScanJobIdAndUser_UserIdAndDeletedAtIsNull(scanJobId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
@@ -103,5 +124,18 @@ public class AnalysisService {
 		if (isProtected && selectionStatus != SelectionStatus.NONE) {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
 		}
+	}
+
+	private void validateCandidateIds(List<Long> candidateIds) {
+		if (candidateIds != null && candidateIds.isEmpty()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+	}
+
+	private List<Long> resolveCandidateIds(List<Long> candidateIds) {
+		if (candidateIds == null) {
+			return List.of(-1L);
+		}
+		return candidateIds;
 	}
 }
