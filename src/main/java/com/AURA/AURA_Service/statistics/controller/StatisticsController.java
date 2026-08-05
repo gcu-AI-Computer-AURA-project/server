@@ -1,6 +1,7 @@
 package com.AURA.AURA_Service.statistics.controller;
 
 import com.AURA.AURA_Service.common.ApiResponse;
+import com.AURA.AURA_Service.statistics.dto.StatisticsCleanupHistoryResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsMonthlyResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsSummaryResponse;
 import com.AURA.AURA_Service.statistics.service.StatisticsService;
@@ -33,5 +34,15 @@ public class StatisticsController {
 		@RequestParam(required = false) String from,
 		@RequestParam(required = false) String to) {
 		return ResponseEntity.ok(ApiResponse.success(statisticsService.getMonthly(Long.valueOf(userId), from, to)));
+	}
+
+	@Operation(summary = "최근 정리 기록 조회", description = "사용자의 정리 완료 이력을 최신순으로 조회합니다.")
+	@GetMapping("/cleanup-histories")
+	public ResponseEntity<ApiResponse<StatisticsCleanupHistoryResponse>> getCleanupHistories(
+		@AuthenticationPrincipal String userId,
+		@RequestParam(defaultValue = "0") int page,
+		@RequestParam(defaultValue = "20") int size) {
+		return ResponseEntity.ok(ApiResponse.success(statisticsService.getCleanupHistories(Long.valueOf(userId), page,
+			size)));
 	}
 }
