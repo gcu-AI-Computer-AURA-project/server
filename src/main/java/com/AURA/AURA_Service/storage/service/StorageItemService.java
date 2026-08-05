@@ -17,6 +17,8 @@ import com.AURA.AURA_Service.storage.dto.StorageItemDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemListItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemLiveDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemPageResponse;
+import com.AURA.AURA_Service.storage.dto.StorageTrashItemResponse;
+import com.AURA.AURA_Service.storage.dto.StorageTrashPageResponse;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -114,6 +116,20 @@ public class StorageItemService {
 		};
 	}
 
+	@Transactional(readOnly = true)
+	public StorageTrashPageResponse getTrashItems(Long userId, ItemSource itemSource, Integer page, Integer size) {
+		if (!userRepository.existsById(userId)) {
+			throw new CustomException(ErrorCode.USER_NOT_FOUND);
+		}
+		Pageable pageable = PageRequest.of(normalizePage(page), normalizeSize(size),
+			Sort.by(Sort.Order.desc("trashedAt"), Sort.Order.desc("itemId")));
+		Page<ScannedItem> items = scannedItemRepository.findAll(createTrashSpecification(userId, itemSource), pageable);
+		List<StorageTrashItemResponse> content = items.getContent().stream()
+			.map(StorageTrashItemResponse::from)
+			.toList();
+		return StorageTrashPageResponse.from(items, content);
+	}
+
 	private Specification<ScannedItem> createSpecification(Long userId, ItemSource itemSource, Boolean trashed) {
 		return (root, query, criteriaBuilder) -> {
 			var predicate = criteriaBuilder.and(
@@ -123,6 +139,18 @@ public class StorageItemService {
 			);
 			if (trashed == null) return predicate;
 			return criteriaBuilder.and(predicate, criteriaBuilder.equal(root.get("isTrashed"), trashed));
+		};
+	}
+
+	private Specification<ScannedItem> createTrashSpecification(Long userId, ItemSource itemSource) {
+		return (root, query, criteriaBuilder) -> {
+			var predicate = criteriaBuilder.and(
+				criteriaBuilder.equal(root.get("user").get("userId"), userId),
+				criteriaBuilder.equal(root.get("isTrashed"), true),
+				criteriaBuilder.isNull(root.get("deletedAt"))
+			);
+			if (itemSource == null) return predicate;
+			return criteriaBuilder.and(predicate, criteriaBuilder.equal(root.get("itemSource"), itemSource));
 		};
 	}
 
