@@ -70,7 +70,29 @@ public class AnalysisCandidate {
 
 	public boolean isProtected() { return isProtected; }
 	public boolean isSelected() { return selectionStatus == SelectionStatus.SELECTED; }
+	public Long getCandidateId() { return candidateId; }
+	public ScanJob getScanJob() { return scanJob; }
+	public ScannedItem getScannedItem() { return scannedItem; }
+	public CandidateCategory getCategory() { return category; }
+	public RiskLevel getRiskLevel() { return riskLevel; }
+	public BigDecimal getPriorityScore() { return priorityScore; }
+	public BigDecimal getGhostScore() { return ghostScore; }
+	public SelectionStatus getSelectionStatus() { return selectionStatus; }
+	public Integer getSelectionVersion() { return selectionVersion; }
 	public Long getEstimatedReclaimBytes() { return estimatedReclaimBytes; }
+	public String getAiProvider() { return aiProvider; }
+	public String getAiModelName() { return aiModelName; }
+	public BigDecimal getAiConfidenceScore() { return aiConfidenceScore; }
+	public List<String> getSemanticTags() { return semanticTags; }
+	public Map<String, Object> getMatchedConditions() { return matchedConditions; }
+	public LocalDateTime getAnalyzedAt() { return analyzedAt; }
+	public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+	public void updateSelection(SelectionStatus selectionStatus) {
+		this.selectionStatus = selectionStatus;
+		this.selectionVersion = this.selectionVersion + 1;
+		this.updatedAt = LocalDateTime.now();
+	}
 
 	private static SelectionStatus resolveSelectionStatus(boolean isProtected, SelectionStatus selectionStatus) {
 		if (isProtected) return SelectionStatus.NONE;

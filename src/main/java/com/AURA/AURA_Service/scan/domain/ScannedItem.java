@@ -117,6 +117,7 @@ public class ScannedItem {
 	public String getMd5Checksum() { return md5Checksum; }
 	public String getOwnerEmail() { return ownerEmail; }
 	public boolean isTrashed() { return isTrashed; }
+	public LocalDateTime getTrashedAt() { return trashedAt; }
 	public Map<String, Object> getMetadataJson() { return metadataJson; }
 
 	public String getClientItemKey() {

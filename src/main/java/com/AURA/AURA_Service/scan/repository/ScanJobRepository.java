@@ -12,14 +12,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
 	boolean existsByUserAndJobStatusInAndDeletedAtIsNull(User user, Collection<JobStatus> jobStatuses);
 
+	long countByUserAndDeletedAtIsNull(User user);
+
 	Optional<ScanJob> findFirstByUserAndJobStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(User user,
 		Collection<JobStatus> jobStatuses);
 
+	Optional<ScanJob> findFirstByUserAndDeletedAtIsNullOrderByCreatedAtDesc(User user);
+
 	Optional<ScanJob> findByScanJobIdAndUserAndDeletedAtIsNull(Long scanJobId, User user);
+
+	Optional<ScanJob> findByScanJobIdAndUser_UserIdAndDeletedAtIsNull(Long scanJobId, Long userId);
 
 	Page<ScanJob> findByUserAndDeletedAtIsNull(User user, Pageable pageable);
 
 	Page<ScanJob> findByUserAndJobStatusAndDeletedAtIsNull(User user, JobStatus jobStatus, Pageable pageable);
-
-	long countByUserAndDeletedAtIsNull(User user);
 }
