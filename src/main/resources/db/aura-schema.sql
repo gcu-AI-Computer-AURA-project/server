@@ -339,3 +339,18 @@ CREATE TABLE IF NOT EXISTS cleanup_histories (
 	CONSTRAINT fk_cleanup_histories_cleanup_job FOREIGN KEY (cleanup_job_id) REFERENCES cleanup_jobs (cleanup_job_id) ON DELETE CASCADE,
 	CONSTRAINT fk_cleanup_histories_scan_job FOREIGN KEY (scan_job_id) REFERENCES scan_jobs (scan_job_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS carbon_saving_histories (
+	carbon_history_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NULL,
+	history_id BIGINT UNSIGNED NOT NULL,
+	reclaimed_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+	estimated_carbon_grams DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
+	formula_version VARCHAR(30) NOT NULL DEFAULT 'v1',
+	calculated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (carbon_history_id),
+	UNIQUE KEY uk_carbon_saving_histories_history (history_id),
+	KEY idx_carbon_saving_histories_user_calculated_at (user_id, calculated_at),
+	CONSTRAINT fk_carbon_saving_histories_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL,
+	CONSTRAINT fk_carbon_saving_histories_history FOREIGN KEY (history_id) REFERENCES cleanup_histories (history_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

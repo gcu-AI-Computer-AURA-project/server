@@ -4,6 +4,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
 import com.AURA.AURA_Service.cleanup.service.CleanupJobService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,6 +50,14 @@ public class CleanupJobController {
 	public ResponseEntity<ApiResponse<CleanupJobItemListResponse>> getItems(@AuthenticationPrincipal String userId,
 		@PathVariable("cleanup_job_id") Long cleanupJobId) {
 		CleanupJobItemListResponse response = cleanupJobService.getItems(Long.valueOf(userId), cleanupJobId);
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "정리 완료 결과 조회", description = "정리 작업 완료 이력과 탄소 절감 계산 결과를 조회합니다.")
+	@GetMapping("/{cleanup_job_id}/result")
+	public ResponseEntity<ApiResponse<CleanupJobResultResponse>> getResult(@AuthenticationPrincipal String userId,
+		@PathVariable("cleanup_job_id") Long cleanupJobId) {
+		CleanupJobResultResponse response = cleanupJobService.getResult(Long.valueOf(userId), cleanupJobId);
 		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 }
