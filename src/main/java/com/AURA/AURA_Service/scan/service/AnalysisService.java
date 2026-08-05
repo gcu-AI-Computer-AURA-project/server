@@ -2,6 +2,7 @@ package com.AURA.AURA_Service.scan.service;
 
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import com.AURA.AURA_Service.scan.domain.AnalysisCandidate;
 import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.CandidateCategory;
 import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.SelectionStatus;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
@@ -10,9 +11,12 @@ import com.AURA.AURA_Service.scan.dto.AnalysisCandidateDetailResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisCandidatePageResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisCategorySummaryResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisSummaryResponse;
+import com.AURA.AURA_Service.scan.dto.CandidateSelectionRequest;
+import com.AURA.AURA_Service.scan.dto.CandidateSelectionResponse;
 import com.AURA.AURA_Service.scan.repository.AnalysisCandidateRepository;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -59,6 +63,16 @@ public class AnalysisService {
 			.orElseThrow(() -> new CustomException(ErrorCode.ANALYSIS_CANDIDATE_NOT_FOUND));
 	}
 
+	@Transactional
+	public CandidateSelectionResponse updateCandidateSelection(Long userId, Long candidateId, CandidateSelectionRequest request) {
+		AnalysisCandidate candidate = analysisCandidateRepository.findDetailByCandidateIdAndUserId(candidateId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.ANALYSIS_CANDIDATE_NOT_FOUND));
+		validateSelectionVersion(candidate.getSelectionVersion(), request.selectionVersion());
+		validateProtectedSelection(candidate.isProtected(), request.selectionStatus());
+		candidate.updateSelection(request.selectionStatus());
+		return CandidateSelectionResponse.from(candidate);
+	}
+
 	private ScanJob findUserScanJob(Long userId, Long scanJobId) {
 		return scanJobRepository.findByScanJobIdAndUser_UserIdAndDeletedAtIsNull(scanJobId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
@@ -77,5 +91,17 @@ public class AnalysisService {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
 		}
 		return resolvedSort;
+	}
+
+	private void validateSelectionVersion(Integer currentVersion, Integer requestVersion) {
+		if (!Objects.equals(currentVersion, requestVersion)) {
+			throw new CustomException(ErrorCode.ANALYSIS_SELECTION_VERSION_CONFLICT);
+		}
+	}
+
+	private void validateProtectedSelection(boolean isProtected, SelectionStatus selectionStatus) {
+		if (isProtected && selectionStatus != SelectionStatus.NONE) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
 	}
 }

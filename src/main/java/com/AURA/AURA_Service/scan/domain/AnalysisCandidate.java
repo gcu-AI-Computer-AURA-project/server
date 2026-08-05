@@ -86,6 +86,13 @@ public class AnalysisCandidate {
 	public List<String> getSemanticTags() { return semanticTags; }
 	public Map<String, Object> getMatchedConditions() { return matchedConditions; }
 	public LocalDateTime getAnalyzedAt() { return analyzedAt; }
+	public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+	public void updateSelection(SelectionStatus selectionStatus) {
+		this.selectionStatus = selectionStatus;
+		this.selectionVersion = this.selectionVersion + 1;
+		this.updatedAt = LocalDateTime.now();
+	}
 
 	private static SelectionStatus resolveSelectionStatus(boolean isProtected, SelectionStatus selectionStatus) {
 		if (isProtected) return SelectionStatus.NONE;
