@@ -1,6 +1,7 @@
 package com.AURA.AURA_Service.statistics.controller;
 
 import com.AURA.AURA_Service.common.ApiResponse;
+import com.AURA.AURA_Service.statistics.dto.CarbonFormulaResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsCleanupHistoryResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsMonthlyResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsSummaryResponse;
@@ -44,5 +45,11 @@ public class StatisticsController {
 		@RequestParam(defaultValue = "20") int size) {
 		return ResponseEntity.ok(ApiResponse.success(statisticsService.getCleanupHistories(Long.valueOf(userId), page,
 			size)));
+	}
+
+	@Operation(summary = "탄소 환산 기준 조회", description = "저장 용량 확보량을 예상 탄소 절감량으로 환산하는 기준 정보를 조회합니다.")
+	@GetMapping("/carbon-formula")
+	public ResponseEntity<ApiResponse<CarbonFormulaResponse>> getCarbonFormula() {
+		return ResponseEntity.ok(ApiResponse.success(statisticsService.getCarbonFormula()));
 	}
 }

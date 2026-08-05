@@ -5,6 +5,7 @@ import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
+import com.AURA.AURA_Service.statistics.dto.CarbonFormulaResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsCleanupHistoryResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsCleanupHistoryResponse.CleanupHistoryItemResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsMonthlyResponse;
@@ -29,6 +30,10 @@ public class StatisticsService {
 	private static final int MAX_PAGE_SIZE = 100;
 	private static final BigDecimal ZERO_CARBON_GRAMS = new BigDecimal("0.0000");
 	private static final DateTimeFormatter YEAR_MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
+	private static final String CARBON_FORMULA_VERSION = "v1";
+	private static final String CARBON_FORMULA_DESCRIPTION = "삭제 또는 휴지통 이동으로 확보한 저장 용량을 내부 기준에 따라 예상 탄소 절감량으로 환산합니다.";
+	private static final String CARBON_FORMULA_UNIT = "grams";
+	private static final LocalDateTime CARBON_FORMULA_LAST_UPDATED_AT = LocalDateTime.of(2026, 7, 14, 0, 0);
 
 	private final UserRepository userRepository;
 	private final ScanJobRepository scanJobRepository;
@@ -75,6 +80,15 @@ public class StatisticsService {
 		} catch (DataAccessException exception) {
 			return StatisticsCleanupHistoryResponse.empty(page, size);
 		}
+	}
+
+	public CarbonFormulaResponse getCarbonFormula() {
+		return new CarbonFormulaResponse(
+			CARBON_FORMULA_VERSION,
+			CARBON_FORMULA_DESCRIPTION,
+			CARBON_FORMULA_UNIT,
+			CARBON_FORMULA_LAST_UPDATED_AT
+		);
 	}
 
 	private StatisticsCleanupSummary findCleanupSummary(Long userId) {
