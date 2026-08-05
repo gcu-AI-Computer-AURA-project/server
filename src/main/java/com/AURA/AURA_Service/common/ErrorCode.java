@@ -21,6 +21,8 @@ public enum ErrorCode {
 	SCAN_CANCEL_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "SCAN-003", "취소할 수 없는 스캔 상태입니다."),
 	SCAN_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-004", "기본 스캔 조건을 찾을 수 없습니다."),
 	DRIVE_FOLDER_REQUIRED(HttpStatus.BAD_REQUEST, "SCAN-005", "Drive 폴더 스캔에는 폴더 ID가 필요합니다."),
+	SCAN_KEYWORD_CONFLICT(HttpStatus.BAD_REQUEST, "SCAN-006", "포함 키워드와 제외 키워드에 같은 값을 사용할 수 없습니다."),
+	REQUIRED_CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "AUTH-004", "필수 동의가 완료되지 않았습니다."),
 	GMAIL_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-001", "Gmail 권한이 필요합니다."),
 	DRIVE_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-002", "Drive 권한이 필요합니다."),
 	GOOGLE_DRIVE_FOLDER_LIST_FAILED(HttpStatus.BAD_GATEWAY, "DRIVE-001", "Google Drive 폴더 목록을 조회할 수 없습니다."),

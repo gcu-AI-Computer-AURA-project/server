@@ -16,10 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class ScanSettingService {
 	private final UserRepository userRepository;
 	private final ScanSettingRepository scanSettingRepository;
+	private final ScanKeywordValidator scanKeywordValidator;
 
-	public ScanSettingService(UserRepository userRepository, ScanSettingRepository scanSettingRepository) {
+	public ScanSettingService(UserRepository userRepository, ScanSettingRepository scanSettingRepository,
+		ScanKeywordValidator scanKeywordValidator) {
 		this.userRepository = userRepository;
 		this.scanSettingRepository = scanSettingRepository;
+		this.scanKeywordValidator = scanKeywordValidator;
 	}
 
 	@Transactional(readOnly = true)
@@ -33,6 +36,7 @@ public class ScanSettingService {
 	@Transactional
 	public ScanSettingResponse save(Long userId, ScanSettingRequest request) {
 		validateDriveFolder(request);
+		scanKeywordValidator.validateNoConflict(request.includeKeywords(), request.excludeKeywords());
 		User user = findUser(userId);
 		ScanSetting scanSetting = scanSettingRepository.findByUser(user).orElseGet(() -> new ScanSetting(user));
 		scanSetting.update(request.scanSource(), normalizeDriveFolderId(request), request.includeSubfolders(),

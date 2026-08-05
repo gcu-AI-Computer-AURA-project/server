@@ -33,11 +33,13 @@ public class ScanJobExecutionService {
 	private final GoogleMetadataCollector googleMetadataCollector;
 	private final GeminiSemanticAnalyzer geminiSemanticAnalyzer;
 	private final AnalysisDecisionEngine analysisDecisionEngine;
+	private final ScanCompletionNotificationService scanCompletionNotificationService;
 
 	public ScanJobExecutionService(TransactionTemplate transactionTemplate, ScanJobRepository scanJobRepository,
 		UserRepository userRepository, ScannedItemRepository scannedItemRepository,
 		AnalysisCandidateRepository analysisCandidateRepository, GoogleMetadataCollector googleMetadataCollector,
-		GeminiSemanticAnalyzer geminiSemanticAnalyzer, AnalysisDecisionEngine analysisDecisionEngine) {
+		GeminiSemanticAnalyzer geminiSemanticAnalyzer, AnalysisDecisionEngine analysisDecisionEngine,
+		ScanCompletionNotificationService scanCompletionNotificationService) {
 		this.transactionTemplate = transactionTemplate;
 		this.scanJobRepository = scanJobRepository;
 		this.userRepository = userRepository;
@@ -46,6 +48,7 @@ public class ScanJobExecutionService {
 		this.googleMetadataCollector = googleMetadataCollector;
 		this.geminiSemanticAnalyzer = geminiSemanticAnalyzer;
 		this.analysisDecisionEngine = analysisDecisionEngine;
+		this.scanCompletionNotificationService = scanCompletionNotificationService;
 	}
 
 	public void execute(Long scanJobId) {
@@ -63,6 +66,7 @@ public class ScanJobExecutionService {
 			List<CandidateDecision> decisions = analysisDecisionEngine.decide(scannedItems, context.condition(), analysisBundle,
 				context.userEmail());
 			saveCandidatesAndFinish(scanJobId, decisions, analysisBundle);
+			scanCompletionNotificationService.notifyIfCompleted(scanJobId);
 		} catch (RuntimeException exception) {
 			failScan(scanJobId, exception);
 		}
