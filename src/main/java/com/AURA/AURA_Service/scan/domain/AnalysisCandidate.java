@@ -70,7 +70,18 @@ public class AnalysisCandidate {
 
 	public boolean isProtected() { return isProtected; }
 	public boolean isSelected() { return selectionStatus == SelectionStatus.SELECTED; }
+	public Long getCandidateId() { return candidateId; }
+	public ScannedItem getScannedItem() { return scannedItem; }
+	public CandidateCategory getCategory() { return category; }
+	public RiskLevel getRiskLevel() { return riskLevel; }
+	public BigDecimal getPriorityScore() { return priorityScore; }
+	public BigDecimal getGhostScore() { return ghostScore; }
+	public SelectionStatus getSelectionStatus() { return selectionStatus; }
+	public Integer getSelectionVersion() { return selectionVersion; }
 	public Long getEstimatedReclaimBytes() { return estimatedReclaimBytes; }
+	public BigDecimal getAiConfidenceScore() { return aiConfidenceScore; }
+	public List<String> getSemanticTags() { return semanticTags; }
+	public Map<String, Object> getMatchedConditions() { return matchedConditions; }
 
 	private static SelectionStatus resolveSelectionStatus(boolean isProtected, SelectionStatus selectionStatus) {
 		if (isProtected) return SelectionStatus.NONE;
