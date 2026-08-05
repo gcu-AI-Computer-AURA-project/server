@@ -8,6 +8,7 @@ import com.AURA.AURA_Service.scan.dto.AnalysisCandidatePageResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisSummaryResponse;
 import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionRequest;
 import com.AURA.AURA_Service.scan.dto.CandidateBulkSelectionResponse;
+import com.AURA.AURA_Service.scan.dto.SelectedCandidateResponse;
 import com.AURA.AURA_Service.scan.service.AnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -60,5 +61,12 @@ public class AnalysisController {
 		@Valid @RequestBody CandidateBulkSelectionRequest request) {
 		return ResponseEntity.ok(ApiResponse.success(analysisService.updateCandidateSelections(Long.valueOf(userId),
 			scanJobId, request)));
+	}
+
+	@Operation(summary = "선택 항목 검토 조회", description = "스캔 작업에서 현재 선택된 후보 목록과 선택/보호 요약을 조회합니다.")
+	@GetMapping("/{scan_job_id}/selected-candidates")
+	public ResponseEntity<ApiResponse<SelectedCandidateResponse>> getSelectedCandidates(@AuthenticationPrincipal String userId,
+		@PathVariable("scan_job_id") Long scanJobId) {
+		return ResponseEntity.ok(ApiResponse.success(analysisService.getSelectedCandidates(Long.valueOf(userId), scanJobId)));
 	}
 }
