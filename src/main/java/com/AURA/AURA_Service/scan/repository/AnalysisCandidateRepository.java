@@ -5,6 +5,7 @@ import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.CandidateCategory;
 import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.SelectionStatus;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,18 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AnalysisCandidateRepository extends JpaRepository<AnalysisCandidate, Long> {
+	@Query("""
+		select candidate
+		from AnalysisCandidate candidate
+		join fetch candidate.scanJob scanJob
+		join fetch candidate.scannedItem item
+		where candidate.candidateId = :candidateId
+			and scanJob.user.userId = :userId
+			and scanJob.deletedAt is null
+		""")
+	Optional<AnalysisCandidate> findDetailByCandidateIdAndUserId(@Param("candidateId") Long candidateId,
+		@Param("userId") Long userId);
+
 	@Query("""
 		select
 			candidate.category as category,
