@@ -55,6 +55,16 @@ public class CleanupJobItem {
 		return cleanupJobItem;
 	}
 
+	public Long getCleanupItemId() { return cleanupItemId; }
+	public ItemSource getItemSource() { return itemSource; }
+	public String getExternalItemId() { return externalItemId; }
+	public String getSnapshotItemKey() { return snapshotItemKey; }
+	public String getSnapshotTitle() { return snapshotTitle; }
+	public Long getSnapshotSizeBytes() { return snapshotSizeBytes; }
+	public ProcessStatus getProcessStatus() { return processStatus; }
+	public String getFailureReason() { return failureReason; }
+	public LocalDateTime getProcessedAt() { return processedAt; }
+
 	public enum ProcessStatus {
 		PENDING,
 		SUCCESS,

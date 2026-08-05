@@ -8,6 +8,7 @@ import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
 import com.AURA.AURA_Service.common.CustomException;
@@ -80,6 +81,15 @@ public class CleanupJobService {
 		CleanupJob cleanupJob = cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
 		return CleanupJobDetailResponse.from(cleanupJob);
+	}
+
+	@Transactional(readOnly = true)
+	public CleanupJobItemListResponse getItems(Long userId, Long cleanupJobId) {
+		cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+		List<CleanupJobItem> cleanupJobItems = cleanupJobItemRepository
+			.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJobId);
+		return CleanupJobItemListResponse.from(cleanupJobItems);
 	}
 
 	private void validateRequest(CleanupJobCreateRequest request) {
