@@ -231,6 +231,53 @@ CREATE TABLE IF NOT EXISTS analysis_candidates (
 	CONSTRAINT fk_analysis_candidates_item FOREIGN KEY (item_id) REFERENCES scanned_items (item_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS cleanup_jobs (
+	cleanup_job_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NOT NULL,
+	scan_job_id BIGINT UNSIGNED NULL,
+	action_type ENUM('MOVE_TO_TRASH', 'PERMANENT_DELETE', 'EMPTY_TRASH') NOT NULL,
+	job_status ENUM('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'PARTIAL_FAILED', 'CANCELED') NOT NULL DEFAULT 'PENDING',
+	selected_mail_count INT UNSIGNED NOT NULL DEFAULT 0,
+	selected_drive_count INT UNSIGNED NOT NULL DEFAULT 0,
+	total_selected_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+	success_item_count INT UNSIGNED NOT NULL DEFAULT 0,
+	failed_item_count INT UNSIGNED NOT NULL DEFAULT 0,
+	progress_percent DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+	approved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	completed_at DATETIME NULL,
+	error_message VARCHAR(500) NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (cleanup_job_id),
+	KEY idx_cleanup_jobs_user_created_at (user_id, created_at),
+	KEY idx_cleanup_jobs_status_action (job_status, action_type),
+	CONSTRAINT fk_cleanup_jobs_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE RESTRICT,
+	CONSTRAINT fk_cleanup_jobs_scan_job FOREIGN KEY (scan_job_id) REFERENCES scan_jobs (scan_job_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cleanup_job_items (
+	cleanup_item_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	cleanup_job_id BIGINT UNSIGNED NOT NULL,
+	candidate_id BIGINT UNSIGNED NULL,
+	item_id BIGINT UNSIGNED NOT NULL,
+	item_source ENUM('GMAIL', 'DRIVE') NOT NULL,
+	external_item_id VARCHAR(255) NOT NULL,
+	snapshot_item_key VARCHAR(300) NOT NULL,
+	snapshot_title VARCHAR(500) NULL,
+	snapshot_size_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+	process_status ENUM('PENDING', 'SUCCESS', 'FAILED', 'SKIPPED') NOT NULL DEFAULT 'PENDING',
+	failure_reason VARCHAR(500) NULL,
+	processed_at DATETIME NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (cleanup_item_id),
+	UNIQUE KEY uk_cleanup_job_item_snapshot (cleanup_job_id, snapshot_item_key),
+	KEY idx_cleanup_job_items_process_status (process_status),
+	KEY idx_cleanup_job_items_source_external (item_source, external_item_id),
+	CONSTRAINT fk_cleanup_job_items_cleanup_job FOREIGN KEY (cleanup_job_id) REFERENCES cleanup_jobs (cleanup_job_id) ON DELETE CASCADE,
+	CONSTRAINT fk_cleanup_job_items_candidate FOREIGN KEY (candidate_id) REFERENCES analysis_candidates (candidate_id) ON DELETE SET NULL,
+	CONSTRAINT fk_cleanup_job_items_item FOREIGN KEY (item_id) REFERENCES scanned_items (item_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS announcements (
 	announcement_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	title VARCHAR(200) NOT NULL,
