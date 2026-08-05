@@ -17,6 +17,8 @@ public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
 
 	Optional<ScanJob> findByScanJobIdAndUserAndDeletedAtIsNull(Long scanJobId, User user);
 
+	Optional<ScanJob> findByScanJobIdAndUser_UserIdAndDeletedAtIsNull(Long scanJobId, Long userId);
+
 	Page<ScanJob> findByUserAndDeletedAtIsNull(User user, Pageable pageable);
 
 	Page<ScanJob> findByUserAndJobStatusAndDeletedAtIsNull(User user, JobStatus jobStatus, Pageable pageable);

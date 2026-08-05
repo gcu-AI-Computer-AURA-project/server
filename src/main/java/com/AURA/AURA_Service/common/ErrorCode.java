@@ -27,6 +27,7 @@ public enum ErrorCode {
 	GOOGLE_GMAIL_SCAN_FAILED(HttpStatus.BAD_GATEWAY, "GOOGLE-008", "Gmail 메타데이터를 조회할 수 없습니다."),
 	GOOGLE_DRIVE_SCAN_FAILED(HttpStatus.BAD_GATEWAY, "GOOGLE-009", "Google Drive 메타데이터를 조회할 수 없습니다."),
 	GEMINI_API_CALL_FAILED(HttpStatus.BAD_GATEWAY, "AI-001", "Gemini API 호출에 실패했습니다."),
+	ANALYSIS_CANDIDATE_NOT_FOUND(HttpStatus.NOT_FOUND, "ANALYSIS-001", "분석 후보를 찾을 수 없습니다."),
 	FCM_SEND_FAILED(HttpStatus.BAD_GATEWAY, "FCM-001", "FCM 알림 발송에 실패했습니다."),
 	NOTIFICATION_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-001", "알림 설정을 찾을 수 없습니다."),
 	NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-002", "알림을 찾을 수 없습니다."),
