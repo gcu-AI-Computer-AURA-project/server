@@ -5,6 +5,8 @@ import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
+import com.AURA.AURA_Service.statistics.dto.StatisticsCleanupHistoryResponse;
+import com.AURA.AURA_Service.statistics.dto.StatisticsCleanupHistoryResponse.CleanupHistoryItemResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsMonthlyResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsMonthlyResponse.MonthlyStatisticResponse;
 import com.AURA.AURA_Service.statistics.dto.StatisticsSummaryResponse;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class StatisticsService {
+	private static final int MAX_PAGE_SIZE = 100;
 	private static final BigDecimal ZERO_CARBON_GRAMS = new BigDecimal("0.0000");
 	private static final DateTimeFormatter YEAR_MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -59,6 +62,19 @@ public class StatisticsService {
 		Map<String, MonthlyStatisticResponse> months = createEmptyMonthlyStatistics(range);
 		findMonthlyStatistics(user.getUserId(), range).forEach(month -> months.put(month.statYearMonth(), month));
 		return new StatisticsMonthlyResponse(List.copyOf(months.values()));
+	}
+
+	@Transactional(readOnly = true)
+	public StatisticsCleanupHistoryResponse getCleanupHistories(Long userId, int page, int size) {
+		User user = userRepository.findById(userId).orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		validatePageRequest(page, size);
+		try {
+			long totalElements = countCleanupHistories(user.getUserId());
+			List<CleanupHistoryItemResponse> content = findCleanupHistories(user.getUserId(), page, size);
+			return StatisticsCleanupHistoryResponse.from(content, page, size, totalElements);
+		} catch (DataAccessException exception) {
+			return StatisticsCleanupHistoryResponse.empty(page, size);
+		}
 	}
 
 	private StatisticsCleanupSummary findCleanupSummary(Long userId) {
@@ -114,6 +130,43 @@ public class StatisticsService {
 		}
 	}
 
+	private long countCleanupHistories(Long userId) {
+		Long totalElements = jdbcTemplate.queryForObject("""
+			select count(*)
+			from cleanup_histories
+			where user_id = ?
+			""", Long.class, userId);
+		return totalElements == null ? 0L : totalElements;
+	}
+
+	private List<CleanupHistoryItemResponse> findCleanupHistories(Long userId, int page, int size) {
+		return jdbcTemplate.query("""
+			select
+				ch.history_id,
+				ch.cleanup_job_id,
+				ch.scan_job_id,
+				ch.action_type,
+				ch.cleaned_item_count,
+				ch.reclaimed_bytes,
+				coalesce(csh.estimated_carbon_grams, 0.0000) as estimated_carbon_grams,
+				ch.completed_at
+			from cleanup_histories ch
+			left join carbon_saving_histories csh on csh.history_id = ch.history_id
+			where ch.user_id = ?
+			order by ch.completed_at desc, ch.history_id desc
+			limit ? offset ?
+			""", (rs, rowNum) -> new CleanupHistoryItemResponse(
+				rs.getLong("history_id"),
+				rs.getLong("cleanup_job_id"),
+				getNullableLong(rs.getObject("scan_job_id")),
+				rs.getString("action_type"),
+				rs.getInt("cleaned_item_count"),
+				rs.getLong("reclaimed_bytes"),
+				defaultCarbon(rs.getBigDecimal("estimated_carbon_grams")),
+				toLocalDateTime(rs.getTimestamp("completed_at"))
+			), userId, size, (long)page * size);
+	}
+
 	private YearMonthRange resolveYearMonthRange(String from, String to) {
 		YearMonth toMonth = isBlank(to) ? YearMonth.now() : parseYearMonth(to);
 		YearMonth fromMonth = isBlank(from) ? toMonth.minusMonths(5) : parseYearMonth(from);
@@ -146,6 +199,12 @@ public class StatisticsService {
 		return value == null || value.isBlank();
 	}
 
+	private void validatePageRequest(int page, int size) {
+		if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+	}
+
 	private BigDecimal findTotalEstimatedCarbonGrams(Long userId) {
 		try {
 			BigDecimal totalEstimatedCarbonGrams = jdbcTemplate.queryForObject("""
@@ -165,6 +224,13 @@ public class StatisticsService {
 
 	private BigDecimal defaultCarbon(BigDecimal value) {
 		return value == null ? ZERO_CARBON_GRAMS : value;
+	}
+
+	private Long getNullableLong(Object value) {
+		if (value == null) {
+			return null;
+		}
+		return ((Number)value).longValue();
 	}
 
 	private record StatisticsCleanupSummary(
