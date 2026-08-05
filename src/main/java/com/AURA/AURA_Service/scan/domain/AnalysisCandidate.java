@@ -71,6 +71,7 @@ public class AnalysisCandidate {
 	public boolean isProtected() { return isProtected; }
 	public boolean isSelected() { return selectionStatus == SelectionStatus.SELECTED; }
 	public Long getCandidateId() { return candidateId; }
+	public ScanJob getScanJob() { return scanJob; }
 	public ScannedItem getScannedItem() { return scannedItem; }
 	public CandidateCategory getCategory() { return category; }
 	public RiskLevel getRiskLevel() { return riskLevel; }
@@ -79,9 +80,12 @@ public class AnalysisCandidate {
 	public SelectionStatus getSelectionStatus() { return selectionStatus; }
 	public Integer getSelectionVersion() { return selectionVersion; }
 	public Long getEstimatedReclaimBytes() { return estimatedReclaimBytes; }
+	public String getAiProvider() { return aiProvider; }
+	public String getAiModelName() { return aiModelName; }
 	public BigDecimal getAiConfidenceScore() { return aiConfidenceScore; }
 	public List<String> getSemanticTags() { return semanticTags; }
 	public Map<String, Object> getMatchedConditions() { return matchedConditions; }
+	public LocalDateTime getAnalyzedAt() { return analyzedAt; }
 
 	private static SelectionStatus resolveSelectionStatus(boolean isProtected, SelectionStatus selectionStatus) {
 		if (isProtected) return SelectionStatus.NONE;

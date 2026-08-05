@@ -6,6 +6,7 @@ import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.CandidateCategory;
 import com.AURA.AURA_Service.scan.domain.AnalysisCandidate.SelectionStatus;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.scan.domain.ScanJob;
+import com.AURA.AURA_Service.scan.dto.AnalysisCandidateDetailResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisCandidatePageResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisCategorySummaryResponse;
 import com.AURA.AURA_Service.scan.dto.AnalysisSummaryResponse;
@@ -49,6 +50,13 @@ public class AnalysisService {
 		String resolvedSort = resolveSort(sort);
 		return AnalysisCandidatePageResponse.from(analysisCandidateRepository.findCandidates(scanJobId, category,
 			itemSource, selectionStatus, includeProtected, resolvedSort, pageable));
+	}
+
+	@Transactional(readOnly = true)
+	public AnalysisCandidateDetailResponse getCandidate(Long userId, Long candidateId) {
+		return analysisCandidateRepository.findDetailByCandidateIdAndUserId(candidateId, userId)
+			.map(AnalysisCandidateDetailResponse::from)
+			.orElseThrow(() -> new CustomException(ErrorCode.ANALYSIS_CANDIDATE_NOT_FOUND));
 	}
 
 	private ScanJob findUserScanJob(Long userId, Long scanJobId) {
