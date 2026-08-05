@@ -1,0 +1,64 @@
+package com.AURA.AURA_Service.cleanup.domain;
+
+import com.AURA.AURA_Service.scan.domain.AnalysisCandidate;
+import com.AURA.AURA_Service.scan.domain.ScannedItem;
+import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.time.LocalDateTime;
+import org.hibernate.annotations.CreationTimestamp;
+
+@Entity
+@Table(name = "cleanup_job_items",
+	uniqueConstraints = @UniqueConstraint(name = "uk_cleanup_job_item_snapshot",
+		columnNames = {"cleanup_job_id", "snapshot_item_key"}))
+public class CleanupJobItem {
+	@Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+	@Column(name = "cleanup_item_id") private Long cleanupItemId;
+	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "cleanup_job_id", nullable = false) private CleanupJob cleanupJob;
+	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "candidate_id") private AnalysisCandidate candidate;
+	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "item_id", nullable = false) private ScannedItem item;
+	@Enumerated(EnumType.STRING) @Column(name = "item_source", nullable = false) private ItemSource itemSource;
+	@Column(name = "external_item_id", nullable = false, length = 255) private String externalItemId;
+	@Column(name = "snapshot_item_key", nullable = false, length = 300) private String snapshotItemKey;
+	@Column(name = "snapshot_title", length = 500) private String snapshotTitle;
+	@Column(name = "snapshot_size_bytes", nullable = false) private Long snapshotSizeBytes;
+	@Enumerated(EnumType.STRING) @Column(name = "process_status", nullable = false) private ProcessStatus processStatus;
+	@Column(name = "failure_reason", length = 500) private String failureReason;
+	@Column(name = "processed_at") private LocalDateTime processedAt;
+	@CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false) private LocalDateTime createdAt;
+
+	protected CleanupJobItem() { }
+
+	public static CleanupJobItem snapshot(CleanupJob cleanupJob, AnalysisCandidate candidate) {
+		ScannedItem item = candidate.getScannedItem();
+		CleanupJobItem cleanupJobItem = new CleanupJobItem();
+		cleanupJobItem.cleanupJob = cleanupJob;
+		cleanupJobItem.candidate = candidate;
+		cleanupJobItem.item = item;
+		cleanupJobItem.itemSource = item.getItemSource();
+		cleanupJobItem.externalItemId = item.getExternalItemId();
+		cleanupJobItem.snapshotItemKey = item.getClientItemKey();
+		cleanupJobItem.snapshotTitle = item.getTitle();
+		cleanupJobItem.snapshotSizeBytes = item.getEstimatedReclaimBytes();
+		cleanupJobItem.processStatus = ProcessStatus.PENDING;
+		return cleanupJobItem;
+	}
+
+	public enum ProcessStatus {
+		PENDING,
+		SUCCESS,
+		FAILED,
+		SKIPPED
+	}
+}

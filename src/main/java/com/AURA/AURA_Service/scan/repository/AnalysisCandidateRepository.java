@@ -118,6 +118,20 @@ public interface AnalysisCandidateRepository extends JpaRepository<AnalysisCandi
 	@Query("""
 		select candidate
 		from AnalysisCandidate candidate
+		join fetch candidate.scanJob scanJob
+		join fetch candidate.scannedItem item
+		where scanJob.scanJobId = :scanJobId
+			and scanJob.user.userId = :userId
+			and scanJob.deletedAt is null
+			and candidate.candidateId in :candidateIds
+		""")
+	List<AnalysisCandidate> findCleanupCandidates(@Param("scanJobId") Long scanJobId,
+		@Param("userId") Long userId,
+		@Param("candidateIds") List<Long> candidateIds);
+
+	@Query("""
+		select candidate
+		from AnalysisCandidate candidate
 		where candidate.scanJob.scanJobId = :scanJobId
 			and candidate.isProtected = true
 		order by candidate.candidateId asc
