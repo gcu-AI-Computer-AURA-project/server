@@ -8,10 +8,13 @@ import com.AURA.AURA_Service.auth.domain.OAuthToken.TokenStatus;
 import com.AURA.AURA_Service.auth.domain.ScanSetting;
 import com.AURA.AURA_Service.auth.domain.ScanSetting.ScanSource;
 import com.AURA.AURA_Service.auth.domain.User;
+import com.AURA.AURA_Service.auth.domain.UserConsent;
 import com.AURA.AURA_Service.auth.repository.GooglePermissionRepository;
 import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.repository.ScanSettingRepository;
+import com.AURA.AURA_Service.auth.repository.UserConsentRepository;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
+import com.AURA.AURA_Service.auth.service.ScanKeywordValidator;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.domain.ScanJob;
@@ -52,16 +55,21 @@ public class ScanJobService {
 	private final GooglePermissionRepository googlePermissionRepository;
 	private final ScanJobRepository scanJobRepository;
 	private final ScanJobExecutionLauncher scanJobExecutionLauncher;
+	private final UserConsentRepository userConsentRepository;
+	private final ScanKeywordValidator scanKeywordValidator;
 
 	public ScanJobService(UserRepository userRepository, ScanSettingRepository scanSettingRepository,
 		OAuthTokenRepository oauthTokenRepository, GooglePermissionRepository googlePermissionRepository,
-		ScanJobRepository scanJobRepository, ScanJobExecutionLauncher scanJobExecutionLauncher) {
+		ScanJobRepository scanJobRepository, ScanJobExecutionLauncher scanJobExecutionLauncher,
+		UserConsentRepository userConsentRepository, ScanKeywordValidator scanKeywordValidator) {
 		this.userRepository = userRepository;
 		this.scanSettingRepository = scanSettingRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
 		this.googlePermissionRepository = googlePermissionRepository;
 		this.scanJobRepository = scanJobRepository;
 		this.scanJobExecutionLauncher = scanJobExecutionLauncher;
+		this.userConsentRepository = userConsentRepository;
+		this.scanKeywordValidator = scanKeywordValidator;
 	}
 
 	/**
@@ -76,9 +84,12 @@ public class ScanJobService {
 	@Transactional
 	public ScanCreateResponse create(Long userId, ScanCreateRequest request) {
 		User user = findUser(userId);
+		validateRequiredConsent(user);
 		validateNoRunningScan(user);
 		AppliedScanCondition appliedCondition = resolveCondition(user, request);
 		validateDriveFolder(appliedCondition.condition());
+		scanKeywordValidator.validateNoConflict(appliedCondition.condition().getIncludeKeywords(),
+			appliedCondition.condition().getExcludeKeywords());
 		validateGoogleAccess(user, appliedCondition.condition().getScanSource());
 
 		ScanJob scanJob = new ScanJob(user, appliedCondition.scanSetting(),
@@ -147,6 +158,14 @@ public class ScanJobService {
 	private void validateNoRunningScan(User user) {
 		if (scanJobRepository.existsByUserAndJobStatusInAndDeletedAtIsNull(user, RUNNING_STATUSES)) {
 			throw new CustomException(ErrorCode.SCAN_ALREADY_RUNNING);
+		}
+	}
+
+	private void validateRequiredConsent(User user) {
+		UserConsent consent = userConsentRepository.findByUser(user)
+			.orElseThrow(() -> new CustomException(ErrorCode.REQUIRED_CONSENT_REQUIRED));
+		if (!consent.isRequiredConsentCompleted()) {
+			throw new CustomException(ErrorCode.REQUIRED_CONSENT_REQUIRED);
 		}
 	}
 

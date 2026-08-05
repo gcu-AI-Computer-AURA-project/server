@@ -15,6 +15,8 @@ import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.auth.repository.UserWithdrawalRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
+import com.AURA.AURA_Service.scan.repository.ScannedItemRepository;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -27,15 +29,20 @@ public class UserService {
 	private final OAuthTokenRepository oauthTokenRepository;
 	private final UserWithdrawalRepository userWithdrawalRepository;
 	private final GooglePermissionService googlePermissionService;
+	private final ScanJobRepository scanJobRepository;
+	private final ScannedItemRepository scannedItemRepository;
 
 	public UserService(UserRepository userRepository, UserConsentRepository userConsentRepository,
 		OAuthTokenRepository oauthTokenRepository, UserWithdrawalRepository userWithdrawalRepository,
-		GooglePermissionService googlePermissionService) {
+		GooglePermissionService googlePermissionService, ScanJobRepository scanJobRepository,
+		ScannedItemRepository scannedItemRepository) {
 		this.userRepository = userRepository;
 		this.userConsentRepository = userConsentRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
 		this.userWithdrawalRepository = userWithdrawalRepository;
 		this.googlePermissionService = googlePermissionService;
+		this.scanJobRepository = scanJobRepository;
+		this.scannedItemRepository = scannedItemRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -50,7 +57,9 @@ public class UserService {
 		User user = findUser(userId);
 		UserConsent consent = userConsentRepository.findByUser(user)
 			.orElseGet(() -> new UserConsent(user));
-		return UserPrivacyDataResponse.from(consent);
+		long scanJobCount = scanJobRepository.countByUserAndDeletedAtIsNull(user);
+		long scannedItemCount = scannedItemRepository.countByUserAndDeletedAtIsNull(user);
+		return UserPrivacyDataResponse.from(consent, scanJobCount, scannedItemCount, 0);
 	}
 
 	@Transactional

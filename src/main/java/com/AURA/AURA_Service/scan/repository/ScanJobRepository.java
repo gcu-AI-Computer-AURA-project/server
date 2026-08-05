@@ -20,4 +20,6 @@ public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
 	Page<ScanJob> findByUserAndDeletedAtIsNull(User user, Pageable pageable);
 
 	Page<ScanJob> findByUserAndJobStatusAndDeletedAtIsNull(User user, JobStatus jobStatus, Pageable pageable);
+
+	long countByUserAndDeletedAtIsNull(User user);
 }

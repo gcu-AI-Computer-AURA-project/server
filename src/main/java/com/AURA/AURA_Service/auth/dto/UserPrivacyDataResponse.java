@@ -9,11 +9,12 @@ public record UserPrivacyDataResponse(
 	@JsonProperty("data_retention") DataRetentionResponse dataRetention,
 	@JsonProperty("managed_data_summary") ManagedDataSummaryResponse managedDataSummary
 ) {
-	public static UserPrivacyDataResponse from(UserConsent consent) {
+	public static UserPrivacyDataResponse from(UserConsent consent, long scanJobCount, long scannedItemCount,
+		long cleanupHistoryCount) {
 		return new UserPrivacyDataResponse(
 			ConsentsResponse.from(consent),
 			DataRetentionResponse.defaultPolicy(),
-			ManagedDataSummaryResponse.empty()
+			new ManagedDataSummaryResponse(scanJobCount, scannedItemCount, cleanupHistoryCount)
 		);
 	}
 
@@ -43,8 +44,8 @@ public record UserPrivacyDataResponse(
 	) {
 		public static DataRetentionResponse defaultPolicy() {
 			return new DataRetentionResponse(
-				"사용자 탈퇴 시 삭제 또는 익명화",
-				"통계 목적의 익명화 보존 가능"
+				"ANONYMIZE",
+				"ANONYMIZE"
 			);
 		}
 	}
@@ -54,8 +55,5 @@ public record UserPrivacyDataResponse(
 		@JsonProperty("scanned_item_count") long scannedItemCount,
 		@JsonProperty("cleanup_history_count") long cleanupHistoryCount
 	) {
-		public static ManagedDataSummaryResponse empty() {
-			return new ManagedDataSummaryResponse(0, 0, 0);
-		}
 	}
 }
