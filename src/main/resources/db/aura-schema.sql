@@ -321,3 +321,21 @@ CREATE TABLE IF NOT EXISTS cleanup_job_items (
 	CONSTRAINT fk_cleanup_job_items_candidate FOREIGN KEY (candidate_id) REFERENCES analysis_candidates (candidate_id) ON DELETE SET NULL,
 	CONSTRAINT fk_cleanup_job_items_item FOREIGN KEY (item_id) REFERENCES scanned_items (item_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS cleanup_histories (
+	history_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NULL,
+	cleanup_job_id BIGINT UNSIGNED NOT NULL,
+	scan_job_id BIGINT UNSIGNED NULL,
+	action_type ENUM('MOVE_TO_TRASH', 'PERMANENT_DELETE', 'EMPTY_TRASH') NOT NULL DEFAULT 'MOVE_TO_TRASH',
+	cleaned_item_count INT UNSIGNED NOT NULL DEFAULT 0,
+	reclaimed_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+	remaining_drive_bytes BIGINT UNSIGNED NULL,
+	completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (history_id),
+	UNIQUE KEY uk_cleanup_histories_cleanup_job (cleanup_job_id),
+	KEY idx_cleanup_histories_user_completed_at (user_id, completed_at),
+	CONSTRAINT fk_cleanup_histories_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL,
+	CONSTRAINT fk_cleanup_histories_cleanup_job FOREIGN KEY (cleanup_job_id) REFERENCES cleanup_jobs (cleanup_job_id) ON DELETE CASCADE,
+	CONSTRAINT fk_cleanup_histories_scan_job FOREIGN KEY (scan_job_id) REFERENCES scan_jobs (scan_job_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
