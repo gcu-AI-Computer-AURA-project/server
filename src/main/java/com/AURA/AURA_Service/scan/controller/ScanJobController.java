@@ -4,6 +4,7 @@ import com.AURA.AURA_Service.common.ApiResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCancelResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanHistoryResponse;
 import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
 import com.AURA.AURA_Service.scan.service.ScanJobService;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -41,6 +43,16 @@ public class ScanJobController {
 	@GetMapping("/running")
 	public ResponseEntity<ApiResponse<ScanRunningResponse>> getRunning(@AuthenticationPrincipal String userId) {
 		ScanRunningResponse response = scanJobService.getRunning(Long.valueOf(userId));
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "전체 스캔 히스토리 조회", description = "현재 사용자의 스캔 작업 이력을 최신순으로 조회합니다.")
+	@GetMapping("/history")
+	public ResponseEntity<ApiResponse<ScanHistoryResponse>> getHistory(@AuthenticationPrincipal String userId,
+		@RequestParam(defaultValue = "0") int page,
+		@RequestParam(defaultValue = "20") int size,
+		@RequestParam(required = false) String status) {
+		ScanHistoryResponse response = scanJobService.getHistory(Long.valueOf(userId), page, size, status);
 		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 

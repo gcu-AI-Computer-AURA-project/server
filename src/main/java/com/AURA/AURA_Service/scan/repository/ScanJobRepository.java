@@ -5,6 +5,8 @@ import com.AURA.AURA_Service.scan.domain.ScanJob;
 import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
 import java.util.Collection;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
@@ -14,4 +16,8 @@ public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
 		Collection<JobStatus> jobStatuses);
 
 	Optional<ScanJob> findByScanJobIdAndUserAndDeletedAtIsNull(Long scanJobId, User user);
+
+	Page<ScanJob> findByUserAndDeletedAtIsNull(User user, Pageable pageable);
+
+	Page<ScanJob> findByUserAndJobStatusAndDeletedAtIsNull(User user, JobStatus jobStatus, Pageable pageable);
 }

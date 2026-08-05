@@ -19,6 +19,8 @@ import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
 import com.AURA.AURA_Service.scan.dto.ScanCancelResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanHistoryItemResponse;
+import com.AURA.AURA_Service.scan.dto.ScanHistoryResponse;
 import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningJobResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
@@ -29,6 +31,11 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -36,6 +43,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 public class ScanJobService {
+	private static final int MAX_PAGE_SIZE = 100;
 	private static final List<JobStatus> RUNNING_STATUSES = List.of(JobStatus.PENDING, JobStatus.SCANNING, JobStatus.ANALYZING);
 
 	private final UserRepository userRepository;
@@ -107,6 +115,20 @@ public class ScanJobService {
 		}
 		scanJob.markCanceled();
 		return ScanCancelResponse.from(scanJob);
+	}
+
+	@Transactional(readOnly = true)
+	public ScanHistoryResponse getHistory(Long userId, int page, int size, String status) {
+		User user = findUser(userId);
+		Pageable pageable = createHistoryPageable(page, size);
+		JobStatus jobStatus = parseJobStatus(status);
+		Page<ScanJob> scanJobs = jobStatus == null
+			? scanJobRepository.findByUserAndDeletedAtIsNull(user, pageable)
+			: scanJobRepository.findByUserAndJobStatusAndDeletedAtIsNull(user, jobStatus, pageable);
+		List<ScanHistoryItemResponse> content = scanJobs.getContent().stream()
+			.map(ScanHistoryItemResponse::from)
+			.toList();
+		return ScanHistoryResponse.from(scanJobs, content);
 	}
 
 	private void launchAfterCommit(Long scanJobId) {
@@ -182,6 +204,24 @@ public class ScanJobService {
 
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
+	}
+
+	private Pageable createHistoryPageable(int page, int size) {
+		if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		return PageRequest.of(page, size, Sort.by(Sort.Order.desc("createdAt")));
+	}
+
+	private JobStatus parseJobStatus(String status) {
+		if (status == null || status.isBlank()) {
+			return null;
+		}
+		try {
+			return JobStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException exception) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
 	}
 
 	private Long estimateRemainingSeconds(ScanJob scanJob) {
