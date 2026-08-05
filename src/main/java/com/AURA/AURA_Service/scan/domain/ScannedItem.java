@@ -94,6 +94,7 @@ public class ScannedItem {
 	}
 
 	public Long getItemId() { return itemId; }
+	public Long getScanJobId() { return scanJob.getScanJobId(); }
 	public ItemSource getItemSource() { return itemSource; }
 	public String getExternalItemId() { return externalItemId; }
 	public String getParentExternalId() { return parentExternalId; }
@@ -119,6 +120,7 @@ public class ScannedItem {
 	public boolean isTrashed() { return isTrashed; }
 	public LocalDateTime getTrashedAt() { return trashedAt; }
 	public Map<String, Object> getMetadataJson() { return metadataJson; }
+	public LocalDateTime getCreatedAt() { return createdAt; }
 
 	public String getClientItemKey() {
 		return itemSource.name() + ":" + externalItemId;
