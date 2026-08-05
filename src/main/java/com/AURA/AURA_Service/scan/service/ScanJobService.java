@@ -33,12 +33,18 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -57,11 +63,12 @@ public class ScanJobService {
 	private final ScanJobExecutionLauncher scanJobExecutionLauncher;
 	private final UserConsentRepository userConsentRepository;
 	private final ScanKeywordValidator scanKeywordValidator;
+	private final JdbcTemplate jdbcTemplate;
 
 	public ScanJobService(UserRepository userRepository, ScanSettingRepository scanSettingRepository,
 		OAuthTokenRepository oauthTokenRepository, GooglePermissionRepository googlePermissionRepository,
 		ScanJobRepository scanJobRepository, ScanJobExecutionLauncher scanJobExecutionLauncher,
-		UserConsentRepository userConsentRepository, ScanKeywordValidator scanKeywordValidator) {
+		UserConsentRepository userConsentRepository, ScanKeywordValidator scanKeywordValidator, JdbcTemplate jdbcTemplate) {
 		this.userRepository = userRepository;
 		this.scanSettingRepository = scanSettingRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
@@ -70,6 +77,7 @@ public class ScanJobService {
 		this.scanJobExecutionLauncher = scanJobExecutionLauncher;
 		this.userConsentRepository = userConsentRepository;
 		this.scanKeywordValidator = scanKeywordValidator;
+		this.jdbcTemplate = jdbcTemplate;
 	}
 
 	/**
@@ -136,8 +144,15 @@ public class ScanJobService {
 		Page<ScanJob> scanJobs = jobStatus == null
 			? scanJobRepository.findByUserAndDeletedAtIsNull(user, pageable)
 			: scanJobRepository.findByUserAndJobStatusAndDeletedAtIsNull(user, jobStatus, pageable);
+		Map<Long, CleanupHistorySummary> cleanupHistorySummaries =
+			findCleanupHistorySummaries(user.getUserId(), scanJobs.getContent());
 		List<ScanHistoryItemResponse> content = scanJobs.getContent().stream()
-			.map(ScanHistoryItemResponse::from)
+			.map(scanJob -> {
+				CleanupHistorySummary cleanupHistorySummary = cleanupHistorySummaries
+					.getOrDefault(scanJob.getScanJobId(), CleanupHistorySummary.empty());
+				return ScanHistoryItemResponse.from(scanJob, cleanupHistorySummary.cleanupDone(),
+					cleanupHistorySummary.reclaimedBytes(), cleanupHistorySummary.estimatedCarbonGrams());
+			})
 			.toList();
 		return ScanHistoryResponse.from(scanJobs, content);
 	}
@@ -243,6 +258,50 @@ public class ScanJobService {
 		}
 	}
 
+	private Map<Long, CleanupHistorySummary> findCleanupHistorySummaries(Long userId, List<ScanJob> scanJobs) {
+		if (scanJobs.isEmpty()) {
+			return Map.of();
+		}
+		List<Long> scanJobIds = scanJobs.stream()
+			.map(ScanJob::getScanJobId)
+			.toList();
+		String placeholders = scanJobIds.stream()
+			.map(scanJobId -> "?")
+			.collect(Collectors.joining(", "));
+		List<Object> parameters = new ArrayList<>();
+		parameters.add(userId);
+		parameters.addAll(scanJobIds);
+		try {
+			return jdbcTemplate.query("""
+				select
+					ch.scan_job_id,
+					coalesce(sum(ch.reclaimed_bytes), 0) as reclaimed_bytes,
+					coalesce(sum(csh.estimated_carbon_grams), 0.0000) as estimated_carbon_grams
+				from cleanup_histories ch
+				left join carbon_saving_histories csh on csh.history_id = ch.history_id
+				where ch.user_id = ?
+					and ch.scan_job_id in (%s)
+				group by ch.scan_job_id
+				""".formatted(placeholders), resultSet -> {
+				Map<Long, CleanupHistorySummary> summaries = new LinkedHashMap<>();
+				while (resultSet.next()) {
+					summaries.put(resultSet.getLong("scan_job_id"), new CleanupHistorySummary(
+						true,
+						resultSet.getLong("reclaimed_bytes"),
+						defaultCarbon(resultSet.getBigDecimal("estimated_carbon_grams"))
+					));
+				}
+				return summaries;
+			}, parameters.toArray());
+		} catch (DataAccessException exception) {
+			return Map.of();
+		}
+	}
+
+	private BigDecimal defaultCarbon(BigDecimal value) {
+		return value == null ? BigDecimal.ZERO.setScale(4) : value;
+	}
+
 	private Long estimateRemainingSeconds(ScanJob scanJob) {
 		LocalDateTime startedAt = scanJob.getStartedAt();
 		BigDecimal progressPercent = scanJob.getProgressPercent();
@@ -262,5 +321,15 @@ public class ScanJobService {
 	}
 
 	private record AppliedScanCondition(ScanSetting scanSetting, ScanCondition condition) {
+	}
+
+	private record CleanupHistorySummary(
+		boolean cleanupDone,
+		Long reclaimedBytes,
+		BigDecimal estimatedCarbonGrams
+	) {
+		private static CleanupHistorySummary empty() {
+			return new CleanupHistorySummary(false, 0L, BigDecimal.ZERO.setScale(4));
+		}
 	}
 }
