@@ -13,6 +13,7 @@ import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.repository.UserConsentRepository;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.auth.repository.UserWithdrawalRepository;
+import com.AURA.AURA_Service.cleanup.repository.CleanupHistoryRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
@@ -31,11 +32,12 @@ public class UserService {
 	private final GooglePermissionService googlePermissionService;
 	private final ScanJobRepository scanJobRepository;
 	private final ScannedItemRepository scannedItemRepository;
+	private final CleanupHistoryRepository cleanupHistoryRepository;
 
 	public UserService(UserRepository userRepository, UserConsentRepository userConsentRepository,
 		OAuthTokenRepository oauthTokenRepository, UserWithdrawalRepository userWithdrawalRepository,
 		GooglePermissionService googlePermissionService, ScanJobRepository scanJobRepository,
-		ScannedItemRepository scannedItemRepository) {
+		ScannedItemRepository scannedItemRepository, CleanupHistoryRepository cleanupHistoryRepository) {
 		this.userRepository = userRepository;
 		this.userConsentRepository = userConsentRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
@@ -43,6 +45,7 @@ public class UserService {
 		this.googlePermissionService = googlePermissionService;
 		this.scanJobRepository = scanJobRepository;
 		this.scannedItemRepository = scannedItemRepository;
+		this.cleanupHistoryRepository = cleanupHistoryRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -59,7 +62,8 @@ public class UserService {
 			.orElseGet(() -> new UserConsent(user));
 		long scanJobCount = scanJobRepository.countByUserAndDeletedAtIsNull(user);
 		long scannedItemCount = scannedItemRepository.countByUserAndDeletedAtIsNull(user);
-		return UserPrivacyDataResponse.from(consent, scanJobCount, scannedItemCount, 0);
+		long cleanupHistoryCount = cleanupHistoryRepository.countByUser(user);
+		return UserPrivacyDataResponse.from(consent, scanJobCount, scannedItemCount, cleanupHistoryCount);
 	}
 
 	@Transactional
