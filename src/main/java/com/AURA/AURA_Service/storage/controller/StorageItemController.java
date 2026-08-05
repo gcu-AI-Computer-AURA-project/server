@@ -3,6 +3,7 @@ package com.AURA.AURA_Service.storage.controller;
 import com.AURA.AURA_Service.common.ApiResponse;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.storage.dto.StorageItemDetailResponse;
+import com.AURA.AURA_Service.storage.dto.StorageItemLiveDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemPageResponse;
 import com.AURA.AURA_Service.storage.service.StorageItemService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,5 +41,14 @@ public class StorageItemController {
 	public ResponseEntity<ApiResponse<StorageItemDetailResponse>> getItem(@AuthenticationPrincipal String userId,
 		@PathVariable("itemId") Long itemId) {
 		return ResponseEntity.ok(ApiResponse.success(storageItemService.getItem(Long.valueOf(userId), itemId)));
+	}
+
+	@Operation(summary = "외부 항목 ID 기반 저장소 상세 조회", description = "Gmail Message ID 또는 Drive File ID를 기준으로 최신 메타데이터를 조회합니다.")
+	@GetMapping("/detail")
+	public ResponseEntity<ApiResponse<StorageItemLiveDetailResponse>> getLiveItemDetail(@AuthenticationPrincipal String userId,
+		@RequestParam("item_source") ItemSource itemSource,
+		@RequestParam("external_item_id") String externalItemId) {
+		return ResponseEntity.ok(ApiResponse.success(storageItemService.getLiveItemDetail(Long.valueOf(userId),
+			itemSource, externalItemId)));
 	}
 }
