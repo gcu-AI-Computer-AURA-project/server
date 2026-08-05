@@ -16,6 +16,8 @@ public enum ErrorCode {
 	GOOGLE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "GOOGLE-007", "Google 계정 권한 동의가 거부되었습니다."),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER-001", "사용자를 찾을 수 없습니다."),
 	USER_ALREADY_WITHDRAWN(HttpStatus.CONFLICT, "USER-002", "이미 탈퇴 처리된 사용자입니다."),
+	SCAN_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-002", "스캔 작업을 찾을 수 없습니다."),
+	ANALYSIS_CANDIDATE_NOT_FOUND(HttpStatus.NOT_FOUND, "ANALYSIS-001", "분석 후보를 찾을 수 없습니다."),
 	SCAN_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "SCAN-004", "기본 스캔 조건을 찾을 수 없습니다."),
 	DRIVE_FOLDER_REQUIRED(HttpStatus.BAD_REQUEST, "SCAN-005", "Drive 폴더 스캔에는 폴더 ID가 필요합니다."),
 	DRIVE_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION-002", "Drive 권한이 필요합니다."),

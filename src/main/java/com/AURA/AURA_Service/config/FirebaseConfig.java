@@ -7,6 +7,8 @@ import jakarta.annotation.PostConstruct;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +35,10 @@ public class FirebaseConfig {
 	public void initialize() {
 		if (!StringUtils.hasText(credentialPath)) {
 			LOGGER.warn("FCM_CREDENTIAL_PATH가 설정되지 않아 Firebase 초기화를 건너뜁니다.");
+			return;
+		}
+		if (!Files.isRegularFile(Path.of(credentialPath))) {
+			LOGGER.warn("FCM_CREDENTIAL_PATH 파일을 찾을 수 없어 Firebase 초기화를 건너뜁니다. credential_path={}", credentialPath);
 			return;
 		}
 		if (!FirebaseApp.getApps().isEmpty()) {
