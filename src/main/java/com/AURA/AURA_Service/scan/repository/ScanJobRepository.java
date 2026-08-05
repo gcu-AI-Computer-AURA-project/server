@@ -12,6 +12,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
 	boolean existsByUserAndJobStatusInAndDeletedAtIsNull(User user, Collection<JobStatus> jobStatuses);
 
+	long countByUserAndDeletedAtIsNull(User user);
+
 	Optional<ScanJob> findFirstByUserAndJobStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(User user,
 		Collection<JobStatus> jobStatuses);
 
