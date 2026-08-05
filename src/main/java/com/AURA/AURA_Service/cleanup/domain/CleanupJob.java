@@ -59,12 +59,18 @@ public class CleanupJob {
 	}
 
 	public Long getCleanupJobId() { return cleanupJobId; }
+	public Long getScanJobId() { return scanJob == null ? null : scanJob.getScanJobId(); }
 	public ActionType getActionType() { return actionType; }
 	public JobStatus getJobStatus() { return jobStatus; }
 	public Integer getSelectedMailCount() { return selectedMailCount; }
 	public Integer getSelectedDriveCount() { return selectedDriveCount; }
 	public Long getTotalSelectedBytes() { return totalSelectedBytes; }
+	public Integer getSuccessItemCount() { return successItemCount; }
+	public Integer getFailedItemCount() { return failedItemCount; }
+	public BigDecimal getProgressPercent() { return progressPercent; }
+	public String getErrorMessage() { return errorMessage; }
 	public LocalDateTime getApprovedAt() { return approvedAt; }
+	public LocalDateTime getCompletedAt() { return completedAt; }
 
 	public enum ActionType {
 		MOVE_TO_TRASH,
