@@ -16,6 +16,8 @@ import com.AURA.AURA_Service.scan.domain.ScanJob.JobStatus;
 import com.AURA.AURA_Service.scan.dto.ScanCancelResponse;
 import com.AURA.AURA_Service.scan.dto.ScanCreateRequest;
 import com.AURA.AURA_Service.scan.dto.ScanCreateResponse;
+import com.AURA.AURA_Service.scan.dto.ScanHistoryItemResponse;
+import com.AURA.AURA_Service.scan.dto.ScanHistoryResponse;
 import com.AURA.AURA_Service.scan.dto.ScanJobDetailResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningJobResponse;
 import com.AURA.AURA_Service.scan.dto.ScanRunningResponse;
@@ -135,6 +137,49 @@ class ScanJobControllerTest {
 				  }
 				}
 				"""));
+	}
+
+	@Test
+	void getHistoryReturnsScanHistoryPageResponse() throws Exception {
+		SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("1", null, List.of()));
+		when(scanJobService.getHistory(1L, 0, 20, "COMPLETED")).thenReturn(new ScanHistoryResponse(
+			List.of(new ScanHistoryItemResponse(
+				15L,
+				JobStatus.COMPLETED,
+				ScanSource.MAIL_AND_DRIVE,
+				120,
+				10737418240L,
+				true,
+				4294967296L,
+				new BigDecimal("6.2400"),
+				LocalDateTime.of(2026, 7, 14, 10, 40, 0)
+			)),
+			0,
+			20,
+			1,
+			1
+		));
+
+		mockMvc.perform(get("/api/scans/history")
+				.param("page", "0")
+				.param("size", "20")
+				.param("status", "COMPLETED")
+				.principal(new UsernamePasswordAuthenticationToken("1", null)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.content[0].scan_job_id").value(15))
+			.andExpect(jsonPath("$.data.content[0].job_status").value("COMPLETED"))
+			.andExpect(jsonPath("$.data.content[0].scan_source").value("MAIL_AND_DRIVE"))
+			.andExpect(jsonPath("$.data.content[0].candidate_count").value(120))
+			.andExpect(jsonPath("$.data.content[0].estimated_reclaim_bytes").value(10737418240L))
+			.andExpect(jsonPath("$.data.content[0].cleanup_done").value(true))
+			.andExpect(jsonPath("$.data.content[0].reclaimed_bytes").value(4294967296L))
+			.andExpect(jsonPath("$.data.content[0].estimated_carbon_grams").value(6.2400))
+			.andExpect(jsonPath("$.data.content[0].created_at").value("2026-07-14T10:40:00"))
+			.andExpect(jsonPath("$.data.page").value(0))
+			.andExpect(jsonPath("$.data.size").value(20))
+			.andExpect(jsonPath("$.data.total_elements").value(1))
+			.andExpect(jsonPath("$.data.total_pages").value(1));
 	}
 
 	@Test
