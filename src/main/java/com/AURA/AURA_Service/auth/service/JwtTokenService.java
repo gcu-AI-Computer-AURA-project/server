@@ -36,9 +36,17 @@ public class JwtTokenService {
 	}
 
 	public Long getAccessTokenUserId(String token) {
+		return getTokenUserId(token, ACCESS_TOKEN_TYPE);
+	}
+
+	public Long getRefreshTokenUserId(String token) {
+		return getTokenUserId(token, REFRESH_TOKEN_TYPE);
+	}
+
+	private Long getTokenUserId(String token, String expectedType) {
 		try {
 			Claims claims = parse(token);
-			validateTokenType(claims, ACCESS_TOKEN_TYPE);
+			validateTokenType(claims, expectedType);
 			return Long.valueOf(claims.getSubject());
 		} catch (JwtException | IllegalArgumentException | NullPointerException exception) {
 			throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);

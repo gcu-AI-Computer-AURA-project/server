@@ -86,8 +86,14 @@ jobs:
 
             FCM_CREDENTIAL_PATH=${{ secrets.FCM_CREDENTIAL_PATH }}
 
-            AURA_ML_CLASSIFIER_VERSION=${{ secrets.AURA_ML_CLASSIFIER_VERSION }}
-            AURA_ML_MODEL_PATH=${{ secrets.AURA_ML_MODEL_PATH }}
+            VERTEX_API_KEY=${{ secrets.VERTEX_API_KEY }}
+            VERTEX_API_URL=${{ secrets.VERTEX_API_URL }}
+            VERTEX_GEMINI_MODEL=${{ secrets.VERTEX_GEMINI_MODEL }}
+
+            AURA_AI_PROVIDER=${{ secrets.AURA_AI_PROVIDER }}
+            AURA_AI_ANALYSIS_ENABLED=${{ secrets.AURA_AI_ANALYSIS_ENABLED }}
+            AURA_AI_BATCH_SIZE=${{ secrets.AURA_AI_BATCH_SIZE }}
+            AURA_AI_REQUEST_TIMEOUT_SECONDS=${{ secrets.AURA_AI_REQUEST_TIMEOUT_SECONDS }}
             EOF
 
             chmod 600 .env

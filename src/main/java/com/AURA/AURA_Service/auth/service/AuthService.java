@@ -3,9 +3,13 @@ package com.AURA.AURA_Service.auth.service;
 import com.AURA.AURA_Service.auth.domain.NotificationSetting;
 import com.AURA.AURA_Service.auth.domain.OAuthToken;
 import com.AURA.AURA_Service.auth.domain.User;
+import com.AURA.AURA_Service.auth.domain.User.AccountStatus;
 import com.AURA.AURA_Service.auth.domain.UserConsent;
 import com.AURA.AURA_Service.auth.dto.GoogleLoginRequest;
 import com.AURA.AURA_Service.auth.dto.GoogleLoginResponse;
+import com.AURA.AURA_Service.auth.dto.LogoutResponse;
+import com.AURA.AURA_Service.auth.dto.TokenRefreshRequest;
+import com.AURA.AURA_Service.auth.dto.TokenRefreshResponse;
 import com.AURA.AURA_Service.auth.repository.NotificationSettingRepository;
 import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.repository.ScanSettingRepository;
@@ -31,12 +35,16 @@ public class AuthService {
 	private final UserConsentRepository userConsentRepository;
 	private final NotificationSettingRepository notificationSettingRepository;
 	private final ScanSettingRepository scanSettingRepository;
+	private final GooglePermissionService googlePermissionService;
 	private final String configuredRedirectUri;
+	private final long accessTokenExpirationSeconds;
 
 	public AuthService(GoogleOAuthClient googleOAuthClient, TokenEncryptionService tokenEncryptionService,
 		JwtTokenService jwtTokenService, UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
 		UserConsentRepository userConsentRepository, NotificationSettingRepository notificationSettingRepository,
-		ScanSettingRepository scanSettingRepository, @Value("${aura.google.redirect-uri:}") String configuredRedirectUri) {
+		ScanSettingRepository scanSettingRepository, @Value("${aura.google.redirect-uri:}") String configuredRedirectUri,
+		@Value("${aura.jwt.access-token-expiration-seconds}") long accessTokenExpirationSeconds,
+		GooglePermissionService googlePermissionService) {
 		this.googleOAuthClient = googleOAuthClient;
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.jwtTokenService = jwtTokenService;
@@ -45,7 +53,9 @@ public class AuthService {
 		this.userConsentRepository = userConsentRepository;
 		this.notificationSettingRepository = notificationSettingRepository;
 		this.scanSettingRepository = scanSettingRepository;
+		this.googlePermissionService = googlePermissionService;
 		this.configuredRedirectUri = configuredRedirectUri;
+		this.accessTokenExpirationSeconds = accessTokenExpirationSeconds;
 	}
 
 	@Transactional
@@ -64,6 +74,7 @@ public class AuthService {
 		String encryptedRefreshToken = googleToken.refreshToken() == null ? null : tokenEncryptionService.encrypt(googleToken.refreshToken());
 		oauthToken.update(encryptedRefreshToken, googleToken.expiresIn(), googleToken.scope());
 		oauthTokenRepository.save(oauthToken);
+		googlePermissionService.syncConnectedPermissions(activeUser, googleToken.scope());
 
 		UserConsent consent = userConsentRepository.findByUser(activeUser).orElseGet(() -> userConsentRepository.save(new UserConsent(activeUser)));
 		if (isNewUser) notificationSettingRepository.save(new NotificationSetting(activeUser));
@@ -74,6 +85,27 @@ public class AuthService {
 		return new GoogleLoginResponse(auraTokens.accessToken(), auraTokens.refreshToken(), "Bearer", 3600,
 			isNewUser, nextStep, isInitialScanSetupRequired,
 			new GoogleLoginResponse.UserResponse(activeUser.getUserId(), activeUser.getEmail(), activeUser.getDisplayName(), activeUser.getProfileImageUrl()));
+	}
+
+	@Transactional(readOnly = true)
+	public TokenRefreshResponse refresh(TokenRefreshRequest request) {
+		Long userId = jwtTokenService.getRefreshTokenUserId(request.refreshToken());
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_AUTH_TOKEN));
+		if (user.getAccountStatus() == AccountStatus.WITHDRAWN) {
+			throw new CustomException(ErrorCode.USER_ALREADY_WITHDRAWN);
+		}
+		return TokenRefreshResponse.from(jwtTokenService.issue(user), accessTokenExpirationSeconds);
+	}
+
+	@Transactional(readOnly = true)
+	public LogoutResponse logout(Long userId) {
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		if (user.getAccountStatus() == AccountStatus.WITHDRAWN) {
+			throw new CustomException(ErrorCode.USER_ALREADY_WITHDRAWN);
+		}
+		return LogoutResponse.loggedOut();
 	}
 
 	private void validateRedirectUri(String redirectUri) {

@@ -35,6 +35,23 @@ class JwtTokenServiceTest {
 	}
 
 	@Test
+	void getRefreshTokenUserIdReturnsSubjectUserId() {
+		String token = createToken("1", "REFRESH", 3600);
+
+		Long userId = jwtTokenService.getRefreshTokenUserId(token);
+
+		assertThat(userId).isEqualTo(1L);
+	}
+
+	@Test
+	void getRefreshTokenUserIdRejectsAccessToken() {
+		String token = createToken("1", "ACCESS", 3600);
+
+		assertThatThrownBy(() -> jwtTokenService.getRefreshTokenUserId(token))
+			.isInstanceOf(CustomException.class);
+	}
+
+	@Test
 	void getAccessTokenUserIdRejectsInvalidToken() {
 		assertThatThrownBy(() -> jwtTokenService.getAccessTokenUserId("invalid-token"))
 			.isInstanceOf(CustomException.class);

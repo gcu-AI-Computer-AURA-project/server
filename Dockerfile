@@ -5,7 +5,7 @@ WORKDIR /app
 ARG JAR_FILE=build/libs/*.jar
 COPY ${JAR_FILE} app.jar
 
-RUN mkdir -p /app/models /app/firebase
+RUN mkdir -p /app/firebase
 
 EXPOSE 8080
 

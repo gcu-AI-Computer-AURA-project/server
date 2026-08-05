@@ -1,12 +1,12 @@
 package com.AURA.AURA_Service.scan.domain;
 
 import com.AURA.AURA_Service.auth.domain.ScanSetting;
+import com.AURA.AURA_Service.auth.domain.ScanSetting.ScanSource;
 import com.AURA.AURA_Service.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,8 +14,12 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Map;
+import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
 @Entity
@@ -23,11 +27,11 @@ import org.hibernate.type.SqlTypes;
 public class ScanJob {
 	@Id @GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "scan_job_id") private Long scanJobId;
-	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "user_id") private User user;
-	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "setting_id") private ScanSetting scanSetting;
-	@Enumerated(EnumType.STRING) @Column(name = "job_status", nullable = false) private ScanJobStatus jobStatus = ScanJobStatus.PENDING;
+	@ManyToOne @JoinColumn(name = "user_id") private User user;
+	@ManyToOne @JoinColumn(name = "setting_id") private ScanSetting scanSetting;
+	@Enumerated(EnumType.STRING) @Column(name = "job_status", nullable = false) private JobStatus jobStatus = JobStatus.PENDING;
 	@Enumerated(EnumType.STRING) @Column(name = "scan_source", nullable = false) private ScanSource scanSource;
-	@JdbcTypeCode(SqlTypes.JSON) @Column(name = "condition_snapshot_json", nullable = false, columnDefinition = "json") private String conditionSnapshotJson;
+	@JdbcTypeCode(SqlTypes.JSON) @Column(name = "condition_snapshot_json", columnDefinition = "json", nullable = false) private Map<String, Object> conditionSnapshot;
 	@Column(name = "progress_percent", nullable = false, precision = 5, scale = 2) private BigDecimal progressPercent = BigDecimal.ZERO;
 	@Column(name = "mail_scanned_count", nullable = false) private Integer mailScannedCount = 0;
 	@Column(name = "drive_scanned_count", nullable = false) private Integer driveScannedCount = 0;
@@ -39,17 +43,120 @@ public class ScanJob {
 	@Column(name = "completed_at") private LocalDateTime completedAt;
 	@Column(name = "canceled_at") private LocalDateTime canceledAt;
 	@Column(name = "deleted_at") private LocalDateTime deletedAt;
-	@Column(name = "created_at", nullable = false, insertable = false, updatable = false) private LocalDateTime createdAt;
-	@Column(name = "updated_at", nullable = false, insertable = false, updatable = false) private LocalDateTime updatedAt;
+	@CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false) private LocalDateTime createdAt;
+	@UpdateTimestamp @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
 
 	protected ScanJob() { }
 
+	public ScanJob(User user, ScanSetting scanSetting, ScanSource scanSource, Map<String, Object> conditionSnapshot) {
+		this.user = user;
+		this.scanSetting = scanSetting;
+		this.scanSource = scanSource;
+		this.conditionSnapshot = conditionSnapshot;
+		this.progressPercent = new BigDecimal("0.00");
+	}
+
 	public Long getScanJobId() { return scanJobId; }
+	public User getUser() { return user; }
+	public JobStatus getJobStatus() { return jobStatus; }
+	public ScanSource getScanSource() { return scanSource; }
+	public Map<String, Object> getConditionSnapshot() { return conditionSnapshot; }
+	public BigDecimal getProgressPercent() { return progressPercent; }
+	public Integer getMailScannedCount() { return mailScannedCount; }
+	public Integer getDriveScannedCount() { return driveScannedCount; }
 	public Integer getCandidateCount() { return candidateCount; }
 	public Integer getProtectedCount() { return protectedCount; }
 	public Long getEstimatedReclaimBytes() { return estimatedReclaimBytes; }
+	public String getErrorMessage() { return errorMessage; }
+	public LocalDateTime getStartedAt() { return startedAt; }
+	public LocalDateTime getCompletedAt() { return completedAt; }
+	public LocalDateTime getCanceledAt() { return canceledAt; }
+	public LocalDateTime getCreatedAt() { return createdAt; }
 
-	public enum ScanJobStatus {
+	/**
+	 * 스캔 시작 상태 변경 메소드
+	 * 백그라운드 작업이 실제 Google 메타데이터 조회를 시작했음을 저장한다.
+	 *
+	 * @return : 없음
+	 * @since : 2026.08.02
+	 * @version : 0.0.1
+	 * @author : 최준혁
+	 */
+	public void markScanning() {
+		if (this.jobStatus == JobStatus.CANCELED) return;
+		this.jobStatus = JobStatus.SCANNING;
+		this.progressPercent = new BigDecimal("0.00");
+		this.startedAt = LocalDateTime.now();
+	}
+
+	public void updateScanningProgress(BigDecimal progressPercent) {
+		if (this.jobStatus != JobStatus.SCANNING) return;
+		updateProgress(progressPercent, new BigDecimal("0.00"), new BigDecimal("50.00"));
+	}
+
+	public void markAnalyzing(int mailScannedCount, int driveScannedCount) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
+		this.jobStatus = JobStatus.ANALYZING;
+		updateProgress(new BigDecimal("50.00"), new BigDecimal("50.00"), new BigDecimal("50.00"));
+		this.mailScannedCount = mailScannedCount;
+		this.driveScannedCount = driveScannedCount;
+	}
+
+	public void updateAnalyzingProgress(BigDecimal progressPercent) {
+		if (this.jobStatus != JobStatus.ANALYZING) return;
+		updateProgress(progressPercent, new BigDecimal("50.00"), new BigDecimal("99.00"));
+	}
+
+	public void markCompleted(int candidateCount, int protectedCount, long estimatedReclaimBytes) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
+		this.jobStatus = JobStatus.COMPLETED;
+		this.progressPercent = new BigDecimal("100.00");
+		this.candidateCount = candidateCount;
+		this.protectedCount = protectedCount;
+		this.estimatedReclaimBytes = estimatedReclaimBytes;
+		this.completedAt = LocalDateTime.now();
+	}
+
+	public void markPartialFailed(int candidateCount, int protectedCount, long estimatedReclaimBytes, String errorMessage) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
+		this.jobStatus = JobStatus.PARTIAL_FAILED;
+		this.progressPercent = new BigDecimal("100.00");
+		this.candidateCount = candidateCount;
+		this.protectedCount = protectedCount;
+		this.estimatedReclaimBytes = estimatedReclaimBytes;
+		this.errorMessage = trimErrorMessage(errorMessage);
+		this.completedAt = LocalDateTime.now();
+	}
+
+	public void markFailed(String errorMessage) {
+		if (this.jobStatus == JobStatus.CANCELED) return;
+		this.jobStatus = JobStatus.FAILED;
+		this.errorMessage = trimErrorMessage(errorMessage);
+		this.completedAt = LocalDateTime.now();
+	}
+
+	public void markCanceled() {
+		this.jobStatus = JobStatus.CANCELED;
+		this.canceledAt = LocalDateTime.now();
+		this.completedAt = null;
+		this.errorMessage = null;
+	}
+
+	private String trimErrorMessage(String value) {
+		if (value == null) return null;
+		return value.length() > 500 ? value.substring(0, 500) : value;
+	}
+
+	private void updateProgress(BigDecimal value, BigDecimal min, BigDecimal max) {
+		BigDecimal normalized = value == null ? min : value.setScale(2, RoundingMode.HALF_UP);
+		if (normalized.compareTo(min) < 0) normalized = min;
+		if (normalized.compareTo(max) > 0) normalized = max;
+		if (this.progressPercent == null || normalized.compareTo(this.progressPercent) > 0) {
+			this.progressPercent = normalized;
+		}
+	}
+
+	public enum JobStatus {
 		PENDING,
 		SCANNING,
 		ANALYZING,
@@ -57,12 +164,5 @@ public class ScanJob {
 		FAILED,
 		CANCELED,
 		PARTIAL_FAILED
-	}
-
-	public enum ScanSource {
-		MAIL,
-		DRIVE_ALL,
-		DRIVE_FOLDER,
-		MAIL_AND_DRIVE
 	}
 }
