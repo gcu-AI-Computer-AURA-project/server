@@ -4,6 +4,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.common.ApiResponse;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.storage.dto.StoragePermanentDeleteRequest;
+import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest;
 import com.AURA.AURA_Service.storage.dto.StorageTrashPageResponse;
 import com.AURA.AURA_Service.storage.service.StorageItemService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,6 +44,16 @@ public class StorageTrashController {
 	public ResponseEntity<ApiResponse<CleanupJobCreateResponse>> permanentDelete(@AuthenticationPrincipal String userId,
 		@Valid @RequestBody StoragePermanentDeleteRequest request) {
 		CleanupJobCreateResponse response = storageItemService.permanentDeleteTrashItems(Long.valueOf(userId), request);
+		return ResponseEntity.status(HttpStatus.CREATED)
+			.location(URI.create("/api/cleanup-jobs/" + response.cleanupJobId()))
+			.body(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "휴지통 비우기", description = "사용자가 최종 승인한 대상 범위의 휴지통 비우기 작업을 생성합니다.")
+	@PostMapping("/empty")
+	public ResponseEntity<ApiResponse<CleanupJobCreateResponse>> emptyTrash(@AuthenticationPrincipal String userId,
+		@Valid @RequestBody StorageTrashEmptyRequest request) {
+		CleanupJobCreateResponse response = storageItemService.emptyTrash(Long.valueOf(userId), request);
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.location(URI.create("/api/cleanup-jobs/" + response.cleanupJobId()))
 			.body(ApiResponse.success(response));
