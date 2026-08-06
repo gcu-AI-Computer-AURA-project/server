@@ -27,7 +27,7 @@ public class CleanupJobItem {
 	@Column(name = "cleanup_item_id") private Long cleanupItemId;
 	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "cleanup_job_id", nullable = false) private CleanupJob cleanupJob;
 	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "candidate_id") private AnalysisCandidate candidate;
-	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "item_id", nullable = false) private ScannedItem item;
+	@ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "item_id") private ScannedItem item;
 	@Enumerated(EnumType.STRING) @Column(name = "item_source", nullable = false) private ItemSource itemSource;
 	@Column(name = "external_item_id", nullable = false, length = 255) private String externalItemId;
 	@Column(name = "snapshot_item_key", nullable = false, length = 300) private String snapshotItemKey;
@@ -51,6 +51,20 @@ public class CleanupJobItem {
 		cleanupJobItem.snapshotItemKey = item.getClientItemKey();
 		cleanupJobItem.snapshotTitle = item.getTitle();
 		cleanupJobItem.snapshotSizeBytes = item.getEstimatedReclaimBytes();
+		cleanupJobItem.processStatus = ProcessStatus.PENDING;
+		return cleanupJobItem;
+	}
+
+	public static CleanupJobItem directSnapshot(CleanupJob cleanupJob, ScannedItem item, ItemSource itemSource,
+		String externalItemId, String snapshotTitle, long snapshotSizeBytes) {
+		CleanupJobItem cleanupJobItem = new CleanupJobItem();
+		cleanupJobItem.cleanupJob = cleanupJob;
+		cleanupJobItem.item = item;
+		cleanupJobItem.itemSource = itemSource;
+		cleanupJobItem.externalItemId = externalItemId;
+		cleanupJobItem.snapshotItemKey = itemSource.name() + ":" + externalItemId;
+		cleanupJobItem.snapshotTitle = snapshotTitle;
+		cleanupJobItem.snapshotSizeBytes = snapshotSizeBytes;
 		cleanupJobItem.processStatus = ProcessStatus.PENDING;
 		return cleanupJobItem;
 	}
