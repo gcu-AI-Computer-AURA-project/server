@@ -25,4 +25,17 @@ public record StorageTrashItemResponse(
 			item.getExternalItemId() != null && !item.getExternalItemId().isBlank()
 		);
 	}
+
+	public static StorageTrashItemResponse live(Long itemId, ItemSource itemSource, String externalItemId,
+		String title, Long sizeBytes, LocalDateTime trashedAt) {
+		return new StorageTrashItemResponse(
+			itemId,
+			itemSource,
+			externalItemId,
+			title,
+			sizeBytes,
+			trashedAt,
+			externalItemId != null && !externalItemId.isBlank()
+		);
+	}
 }
