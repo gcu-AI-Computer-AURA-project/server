@@ -7,5 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CleanupHistoryRepository extends JpaRepository<CleanupHistory, Long> {
 	long countByUser(User user);
+	boolean existsByCleanupJobCleanupJobId(Long cleanupJobId);
 	Optional<CleanupHistory> findByCleanupJobCleanupJobIdAndUserUserId(Long cleanupJobId, Long userId);
 }

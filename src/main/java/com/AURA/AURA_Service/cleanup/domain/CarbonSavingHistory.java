@@ -28,6 +28,18 @@ public class CarbonSavingHistory {
 
 	protected CarbonSavingHistory() { }
 
+	public static CarbonSavingHistory create(User user, CleanupHistory cleanupHistory, long reclaimedBytes,
+		BigDecimal estimatedCarbonGrams, String formulaVersion, LocalDateTime calculatedAt) {
+		CarbonSavingHistory carbonSavingHistory = new CarbonSavingHistory();
+		carbonSavingHistory.user = user;
+		carbonSavingHistory.cleanupHistory = cleanupHistory;
+		carbonSavingHistory.reclaimedBytes = reclaimedBytes;
+		carbonSavingHistory.estimatedCarbonGrams = estimatedCarbonGrams;
+		carbonSavingHistory.formulaVersion = formulaVersion;
+		carbonSavingHistory.calculatedAt = calculatedAt;
+		return carbonSavingHistory;
+	}
+
 	public BigDecimal getEstimatedCarbonGrams() { return estimatedCarbonGrams; }
 	public String getFormulaVersion() { return formulaVersion; }
 }

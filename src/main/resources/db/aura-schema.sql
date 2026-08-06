@@ -354,3 +354,23 @@ CREATE TABLE IF NOT EXISTS carbon_saving_histories (
 	CONSTRAINT fk_carbon_saving_histories_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL,
 	CONSTRAINT fk_carbon_saving_histories_history FOREIGN KEY (history_id) REFERENCES cleanup_histories (history_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS monthly_user_statistics (
+	monthly_stat_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	user_id BIGINT UNSIGNED NULL,
+	stat_owner_key VARCHAR(80) NOT NULL,
+	stat_year_month CHAR(7) NOT NULL,
+	scan_count INT UNSIGNED NOT NULL DEFAULT 0,
+	cleanup_count INT UNSIGNED NOT NULL DEFAULT 0,
+	trashed_item_count INT UNSIGNED NOT NULL DEFAULT 0,
+	permanently_deleted_item_count INT UNSIGNED NOT NULL DEFAULT 0,
+	reclaimed_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+	estimated_carbon_grams DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (monthly_stat_id),
+	UNIQUE KEY uk_monthly_user_statistics_owner_month (stat_owner_key, stat_year_month),
+	KEY idx_monthly_user_statistics_user_month (user_id, stat_year_month),
+	KEY idx_monthly_user_statistics_month (stat_year_month),
+	CONSTRAINT fk_monthly_user_statistics_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
