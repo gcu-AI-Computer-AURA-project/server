@@ -49,20 +49,15 @@ import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -79,6 +74,7 @@ public class StorageItemService {
 	private static final int DEFAULT_PAGE = 0;
 	private static final int DEFAULT_SIZE = 30;
 	private static final int MAX_SIZE = 100;
+	private static final int EMPTY_TRASH_GOOGLE_PAGE_SIZE = 100;
 	private static final String PERMANENT_DELETE_CONFIRMATION_TEXT = "\uc601\uad6c\uc0ad\uc81c";
 	private static final String EMPTY_TRASH_CONFIRMATION_TEXT = "\ud734\uc9c0\ud1b5\ube44\uc6b0\uae30";
 
@@ -197,26 +193,26 @@ public class StorageItemService {
 		validateEmptyTrashRequest(request);
 		User user = userRepository.findById(userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-		ItemSource itemSource = toItemSource(request.targetSource());
-		List<ScannedItem> trashItems = scannedItemRepository.findAll(createTrashSpecification(userId, itemSource),
-			Sort.by(Sort.Order.asc("itemSource"), Sort.Order.asc("itemId")));
+		GoogleToken googleToken = refreshGoogleAccessToken(userId, firstItemSource(request.targetSource()));
+		List<StorageTrashItemResponse> trashItems = collectLiveTrashItems(userId, googleToken.accessToken(),
+			request.targetSource());
 		if (trashItems.isEmpty()) {
 			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
 		}
 		trashItems.forEach(this::validateCleanupExternalItemId);
 		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.EMPTY_TRASH,
-			countScannedItemsBySource(trashItems, ItemSource.GMAIL),
-			countScannedItemsBySource(trashItems, ItemSource.DRIVE),
-			sumScannedItemBytes(trashItems),
+			countTrashItemsBySource(trashItems, ItemSource.GMAIL),
+			countTrashItemsBySource(trashItems, ItemSource.DRIVE),
+			sumTrashItemBytes(trashItems),
 			LocalDateTime.now()));
 		List<CleanupJobItem> cleanupJobItems = trashItems.stream()
 			.map(item -> CleanupJobItem.directSnapshot(
 				cleanupJob,
-				item,
-				item.getItemSource(),
-				item.getExternalItemId(),
-				item.getTitle(),
-				item.getEstimatedReclaimBytes()
+				findOptionalScannedItem(userId, item),
+				item.itemSource(),
+				item.externalItemId().trim(),
+				item.title(),
+				defaultZero(item.sizeBytes())
 			))
 			.toList();
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
@@ -291,6 +287,87 @@ public class StorageItemService {
 				item.title(), item.sizeBytes(), item.trashedAt()))
 			.toList();
 		return StorageTrashPageResponse.live(content, page, size, response.totalElements());
+	}
+
+	private List<StorageTrashItemResponse> collectLiveTrashItems(Long userId, String accessToken,
+		TargetSource targetSource) {
+		List<StorageTrashItemResponse> content = new ArrayList<>();
+		if (targetSource == TargetSource.GMAIL || targetSource == TargetSource.ALL) {
+			content.addAll(collectLiveGmailTrashItems(userId, accessToken));
+		}
+		if (targetSource == TargetSource.DRIVE || targetSource == TargetSource.ALL) {
+			content.addAll(collectLiveDriveTrashItems(userId, accessToken));
+		}
+		return content.stream()
+			.sorted(Comparator.comparing(StorageTrashItemResponse::itemSource)
+				.thenComparing(StorageTrashItemResponse::externalItemId, Comparator.nullsLast(String::compareTo)))
+			.toList();
+	}
+
+	private List<StorageTrashItemResponse> collectLiveGmailTrashItems(Long userId, String accessToken) {
+		try {
+			Gmail gmail = createGmail(accessToken);
+			List<StorageTrashItemResponse> content = new ArrayList<>();
+			String pageToken = null;
+			do {
+				ListMessagesResponse response = gmail.users().messages().list(GOOGLE_USER_ID)
+					.setQ("in:trash")
+					.setMaxResults((long)EMPTY_TRASH_GOOGLE_PAGE_SIZE)
+					.setFields(GMAIL_LIST_FIELDS)
+					.setPageToken(pageToken)
+					.execute();
+				List<Message> messages = response.getMessages() == null ? List.of() : response.getMessages();
+				Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.GMAIL,
+					messages.stream().map(Message::getId).toList());
+				for (Message listedMessage : messages) {
+					Message message = gmail.users().messages().get(GOOGLE_USER_ID, listedMessage.getId())
+						.setFormat("metadata")
+						.setMetadataHeaders(List.of("Subject", "From"))
+						.setFields(GMAIL_MESSAGE_FIELDS)
+						.execute();
+					StorageItemListItemResponse item = toGmailListItem(message, snapshotItemIds.get(message.getId()));
+					content.add(StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
+						item.title(), item.sizeBytes(), item.trashedAt()));
+				}
+				pageToken = response.getNextPageToken();
+			} while (pageToken != null);
+			return content;
+		} catch (IOException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED);
+		}
+	}
+
+	private List<StorageTrashItemResponse> collectLiveDriveTrashItems(Long userId, String accessToken) {
+		try {
+			Drive drive = createDrive(accessToken);
+			List<StorageTrashItemResponse> content = new ArrayList<>();
+			String pageToken = null;
+			do {
+				FileList fileList = drive.files().list()
+					.setQ(createDriveStorageQuery(true))
+					.setFields(DRIVE_LIST_FIELDS)
+					.setPageSize(EMPTY_TRASH_GOOGLE_PAGE_SIZE)
+					.setPageToken(pageToken)
+					.setOrderBy("modifiedTime desc")
+					.setSupportsAllDrives(true)
+					.setIncludeItemsFromAllDrives(true)
+					.execute();
+				List<File> files = fileList.getFiles() == null ? List.of() : fileList.getFiles();
+				Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.DRIVE,
+					files.stream().map(File::getId).toList());
+				content.addAll(files.stream()
+					.map(file -> {
+						StorageItemListItemResponse item = toDriveListItem(file, snapshotItemIds.get(file.getId()));
+						return StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
+							item.title(), item.sizeBytes(), item.trashedAt());
+					})
+					.toList());
+				pageToken = fileList.getNextPageToken();
+			} while (pageToken != null);
+			return content;
+		} catch (IOException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED);
+		}
 	}
 
 	private ListMessagesResponse getGmailMessagePage(Gmail gmail, String query, int page, int size) throws IOException {
@@ -463,6 +540,9 @@ public class StorageItemService {
 	}
 
 	private void validateEmptyTrashRequest(StorageTrashEmptyRequest request) {
+		if (request.targetSource() == null) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
 		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
 			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
 		}
@@ -471,64 +551,36 @@ public class StorageItemService {
 		}
 	}
 
-	private ItemSource toItemSource(TargetSource targetSource) {
-		return switch (targetSource) {
-			case GMAIL -> ItemSource.GMAIL;
-			case DRIVE -> ItemSource.DRIVE;
-			case ALL -> null;
-		};
+	private ItemSource firstItemSource(TargetSource targetSource) {
+		return targetSource == TargetSource.DRIVE ? ItemSource.DRIVE : ItemSource.GMAIL;
 	}
 
-	private void validateCleanupExternalItemId(ScannedItem item) {
-		if (item.getExternalItemId() == null || item.getExternalItemId().isBlank()) {
+	private ScannedItem findOptionalScannedItem(Long userId, StorageTrashItemResponse item) {
+		if (item.itemId() == null) return null;
+		ScannedItem scannedItem = scannedItemRepository.findDetailByItemIdAndUserId(item.itemId(), userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
+		if (scannedItem.getItemSource() != item.itemSource()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		return scannedItem;
+	}
+
+	private void validateCleanupExternalItemId(StorageTrashItemResponse item) {
+		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
 			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
 		}
 	}
 
-	private int countScannedItemsBySource(List<ScannedItem> items, ItemSource itemSource) {
+	private int countTrashItemsBySource(List<StorageTrashItemResponse> items, ItemSource itemSource) {
 		return (int)items.stream()
-			.filter(item -> item.getItemSource() == itemSource)
+			.filter(item -> item.itemSource() == itemSource)
 			.count();
 	}
 
-	private long sumScannedItemBytes(List<ScannedItem> items) {
+	private long sumTrashItemBytes(List<StorageTrashItemResponse> items) {
 		return items.stream()
-			.mapToLong(ScannedItem::getEstimatedReclaimBytes)
+			.mapToLong(item -> defaultZero(item.sizeBytes()))
 			.sum();
-	}
-
-	private Specification<ScannedItem> createSpecification(Long userId, ItemSource itemSource, Boolean trashed) {
-		return (root, query, criteriaBuilder) -> {
-			var predicate = criteriaBuilder.and(
-				criteriaBuilder.equal(root.get("user").get("userId"), userId),
-				criteriaBuilder.equal(root.get("itemSource"), itemSource),
-				criteriaBuilder.isNull(root.get("deletedAt"))
-			);
-			if (trashed == null) return predicate;
-			return criteriaBuilder.and(predicate, criteriaBuilder.equal(root.get("isTrashed"), trashed));
-		};
-	}
-
-	private Specification<ScannedItem> createTrashSpecification(Long userId, ItemSource itemSource) {
-		return (root, query, criteriaBuilder) -> {
-			var predicate = criteriaBuilder.and(
-				criteriaBuilder.equal(root.get("user").get("userId"), userId),
-				criteriaBuilder.equal(root.get("isTrashed"), true),
-				criteriaBuilder.isNull(root.get("deletedAt"))
-			);
-			if (itemSource == null) return predicate;
-			return criteriaBuilder.and(predicate, criteriaBuilder.equal(root.get("itemSource"), itemSource));
-		};
-	}
-
-	private Sort createSort(String sort) {
-		return switch (sort == null ? "" : sort) {
-			case "size_desc" -> Sort.by(Sort.Order.desc("sizeBytes"), Sort.Order.desc("itemId"));
-			case "modified_desc" -> Sort.by(Sort.Order.desc("modifiedTime"), Sort.Order.desc("itemId"));
-			case "created_desc" -> Sort.by(Sort.Order.desc("createdTime"), Sort.Order.desc("itemId"));
-			case "oldest" -> Sort.by(Sort.Order.asc("createdTime"), Sort.Order.asc("itemId"));
-			default -> Sort.by(Sort.Order.desc("itemId"));
-		};
 	}
 
 	private int normalizePage(Integer page) {
@@ -646,6 +698,10 @@ public class StorageItemService {
 
 	private Long toLong(Integer value) {
 		return value == null ? 0L : value.longValue();
+	}
+
+	private long defaultZero(Long value) {
+		return value == null ? 0L : value;
 	}
 
 	private String header(Message message, String name) {

@@ -45,9 +45,9 @@ public class NotificationController {
 	}
 
 	@Operation(summary = "알림 읽음 처리", description = "사용자가 확인한 알림을 읽음 상태로 변경합니다.")
-	@PatchMapping("/{notificationId}/read")
+	@PatchMapping("/{notification_id}/read")
 	public ResponseEntity<ApiResponse<NotificationReadResponse>> read(@AuthenticationPrincipal String userId,
-		@PathVariable Long notificationId) {
+		@PathVariable("notification_id") Long notificationId) {
 		return ResponseEntity.ok(ApiResponse.success(notificationService.read(Long.valueOf(userId), notificationId)));
 	}
 }
