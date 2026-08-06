@@ -8,6 +8,12 @@ import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.auth.service.GoogleOAuthClient;
 import com.AURA.AURA_Service.auth.service.GoogleOAuthClient.GoogleToken;
 import com.AURA.AURA_Service.auth.service.TokenEncryptionService;
+import com.AURA.AURA_Service.cleanup.domain.CleanupJob;
+import com.AURA.AURA_Service.cleanup.domain.CleanupJob.ActionType;
+import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
+import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
+import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.domain.ScannedItem;
@@ -17,6 +23,7 @@ import com.AURA.AURA_Service.storage.dto.StorageItemDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemListItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemLiveDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemPageResponse;
+import com.AURA.AURA_Service.storage.dto.StoragePermanentDeleteRequest;
 import com.AURA.AURA_Service.storage.dto.StorageTrashItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageTrashPageResponse;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
@@ -37,9 +44,11 @@ import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -57,21 +66,27 @@ public class StorageItemService {
 	private static final int DEFAULT_PAGE = 0;
 	private static final int DEFAULT_SIZE = 30;
 	private static final int MAX_SIZE = 100;
+	private static final String PERMANENT_DELETE_CONFIRMATION_TEXT = "\uc601\uad6c\uc0ad\uc81c";
 
 	private final UserRepository userRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
 	private final TokenEncryptionService tokenEncryptionService;
 	private final GoogleOAuthClient googleOAuthClient;
 	private final ScannedItemRepository scannedItemRepository;
+	private final CleanupJobRepository cleanupJobRepository;
+	private final CleanupJobItemRepository cleanupJobItemRepository;
 
 	public StorageItemService(UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
 		TokenEncryptionService tokenEncryptionService, GoogleOAuthClient googleOAuthClient,
-		ScannedItemRepository scannedItemRepository) {
+		ScannedItemRepository scannedItemRepository, CleanupJobRepository cleanupJobRepository,
+		CleanupJobItemRepository cleanupJobItemRepository) {
 		this.userRepository = userRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.googleOAuthClient = googleOAuthClient;
 		this.scannedItemRepository = scannedItemRepository;
+		this.cleanupJobRepository = cleanupJobRepository;
+		this.cleanupJobItemRepository = cleanupJobItemRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -128,6 +143,87 @@ public class StorageItemService {
 			.map(StorageTrashItemResponse::from)
 			.toList();
 		return StorageTrashPageResponse.from(items, content);
+	}
+
+	@Transactional
+	public CleanupJobCreateResponse permanentDeleteTrashItems(Long userId, StoragePermanentDeleteRequest request) {
+		validatePermanentDeleteRequest(request);
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.PERMANENT_DELETE,
+			countBySource(request.items(), ItemSource.GMAIL),
+			countBySource(request.items(), ItemSource.DRIVE),
+			sumSnapshotBytes(request.items()),
+			LocalDateTime.now()));
+		List<CleanupJobItem> cleanupJobItems = createPermanentDeleteItems(cleanupJob, userId, request.items());
+		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
+	private void validatePermanentDeleteRequest(StoragePermanentDeleteRequest request) {
+		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		if (!PERMANENT_DELETE_CONFIRMATION_TEXT.equals(request.confirmationText())) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		Set<String> snapshotItemKeys = new HashSet<>();
+		for (StoragePermanentDeleteRequest.ItemRequest item : request.items()) {
+			validatePermanentDeleteItem(item, snapshotItemKeys);
+		}
+	}
+
+	private void validatePermanentDeleteItem(StoragePermanentDeleteRequest.ItemRequest item,
+		Set<String> snapshotItemKeys) {
+		if (item.itemSource() == null) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
+			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
+		}
+		if (item.snapshotSizeBytes() < 0) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		String snapshotItemKey = item.itemSource().name() + ":" + item.externalItemId().trim();
+		if (!snapshotItemKeys.add(snapshotItemKey)) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+	}
+
+	private List<CleanupJobItem> createPermanentDeleteItems(CleanupJob cleanupJob, Long userId,
+		List<StoragePermanentDeleteRequest.ItemRequest> items) {
+		return items.stream()
+			.map(item -> CleanupJobItem.directSnapshot(
+				cleanupJob,
+				findOptionalScannedItem(userId, item),
+				item.itemSource(),
+				item.externalItemId().trim(),
+				item.snapshotTitle(),
+				item.snapshotSizeBytes()
+			))
+			.toList();
+	}
+
+	private ScannedItem findOptionalScannedItem(Long userId, StoragePermanentDeleteRequest.ItemRequest item) {
+		if (item.itemId() == null) return null;
+		ScannedItem scannedItem = scannedItemRepository.findDetailByItemIdAndUserId(item.itemId(), userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
+		if (scannedItem.getItemSource() != item.itemSource()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		return scannedItem;
+	}
+
+	private int countBySource(List<StoragePermanentDeleteRequest.ItemRequest> items, ItemSource itemSource) {
+		return (int)items.stream()
+			.filter(item -> item.itemSource() == itemSource)
+			.count();
+	}
+
+	private long sumSnapshotBytes(List<StoragePermanentDeleteRequest.ItemRequest> items) {
+		return items.stream()
+			.mapToLong(StoragePermanentDeleteRequest.ItemRequest::snapshotSizeBytes)
+			.sum();
 	}
 
 	private Specification<ScannedItem> createSpecification(Long userId, ItemSource itemSource, Boolean trashed) {

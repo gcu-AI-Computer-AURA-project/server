@@ -3,7 +3,7 @@ package com.AURA.AURA_Service.common;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
-	INVALID_INPUT(HttpStatus.BAD_REQUEST, "C001", "입력값이 올바르지 않습니다."),
+	INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON-001", "입력값이 올바르지 않습니다."),
 	AUTH_TOKEN_MISSING(HttpStatus.UNAUTHORIZED, "AUTH-001", "인증 토큰이 없습니다."),
 	INVALID_AUTH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH-002", "인증 토큰이 만료되었거나 유효하지 않습니다."),
 	GOOGLE_AUTHENTICATION_FAILED(HttpStatus.UNAUTHORIZED, "GOOGLE-001", "Google 인증에 실패했습니다."),

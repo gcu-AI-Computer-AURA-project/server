@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS cleanup_job_items (
 	cleanup_item_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	cleanup_job_id BIGINT UNSIGNED NOT NULL,
 	candidate_id BIGINT UNSIGNED NULL,
-	item_id BIGINT UNSIGNED NOT NULL,
+	item_id BIGINT UNSIGNED NULL,
 	item_source ENUM('GMAIL', 'DRIVE') NOT NULL,
 	external_item_id VARCHAR(255) NOT NULL,
 	snapshot_item_key VARCHAR(300) NOT NULL,
