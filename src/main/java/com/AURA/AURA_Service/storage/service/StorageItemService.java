@@ -194,15 +194,6 @@ public class StorageItemService {
 		return CleanupJobCreateResponse.from(cleanupJob);
 	}
 
-	private void validateEmptyTrashRequest(StorageTrashEmptyRequest request) {
-		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
-			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
-		}
-		if (!EMPTY_TRASH_CONFIRMATION_TEXT.equals(request.confirmationText())) {
-			throw new CustomException(ErrorCode.INVALID_INPUT);
-		}
-	}
-
 	private void validatePermanentDeleteRequest(StoragePermanentDeleteRequest request) {
 		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
 			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
@@ -267,6 +258,15 @@ public class StorageItemService {
 		return items.stream()
 			.mapToLong(StoragePermanentDeleteRequest.ItemRequest::snapshotSizeBytes)
 			.sum();
+	}
+
+	private void validateEmptyTrashRequest(StorageTrashEmptyRequest request) {
+		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		if (!EMPTY_TRASH_CONFIRMATION_TEXT.equals(request.confirmationText())) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
 	}
 
 	private ItemSource toItemSource(TargetSource targetSource) {
