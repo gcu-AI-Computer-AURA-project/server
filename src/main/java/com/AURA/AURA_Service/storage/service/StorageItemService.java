@@ -35,7 +35,9 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
+import com.google.api.services.drive.model.FileList;
 import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.MessagePartHeader;
 import com.google.auth.http.HttpCredentialsAdapter;
@@ -47,9 +49,13 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -63,7 +69,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class StorageItemService {
 	private static final String APPLICATION_NAME = "AURA_Service";
 	private static final String GOOGLE_USER_ID = "me";
+	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+	private static final String GMAIL_LIST_FIELDS = "nextPageToken,resultSizeEstimate,messages(id,threadId)";
+	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers)";
 	private static final String DRIVE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,owners(emailAddress),trashed,trashedTime,parents";
+	private static final String DRIVE_LIST_FIELDS = "nextPageToken,files(" + DRIVE_FILE_FIELDS + ")";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 	private static final int DEFAULT_PAGE = 0;
 	private static final int DEFAULT_SIZE = 30;
@@ -92,18 +102,16 @@ public class StorageItemService {
 		this.cleanupJobItemRepository = cleanupJobItemRepository;
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public StorageItemPageResponse getItems(Long userId, ItemSource itemSource, Boolean trashed, String sort,
 		Integer page, Integer size) {
-		if (!userRepository.existsById(userId)) {
-			throw new CustomException(ErrorCode.USER_NOT_FOUND);
-		}
-		Pageable pageable = PageRequest.of(normalizePage(page), normalizeSize(size), createSort(sort));
-		Page<ScannedItem> items = scannedItemRepository.findAll(createSpecification(userId, itemSource, trashed), pageable);
-		List<StorageItemListItemResponse> content = items.getContent().stream()
-			.map(StorageItemListItemResponse::from)
-			.toList();
-		return StorageItemPageResponse.from(items, content);
+		GoogleToken googleToken = refreshGoogleAccessToken(userId, itemSource);
+		int normalizedPage = normalizePage(page);
+		int normalizedSize = normalizeSize(size);
+		return switch (itemSource) {
+			case GMAIL -> getLiveGmailItems(userId, googleToken.accessToken(), trashed, normalizedPage, normalizedSize);
+			case DRIVE -> getLiveDriveItems(userId, googleToken.accessToken(), trashed, sort, normalizedPage, normalizedSize);
+		};
 	}
 
 	@Transactional(readOnly = true)
@@ -121,31 +129,39 @@ public class StorageItemService {
 		if (externalItemId == null || externalItemId.isBlank()) {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
 		}
-		User user = userRepository.findById(userId)
-			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
-			.orElseThrow(() -> new CustomException(resolvePermissionError(itemSource)));
-		validateToken(oauthToken, itemSource);
-		GoogleToken googleToken = googleOAuthClient.refreshAccessToken(tokenEncryptionService.decrypt(oauthToken.getEncryptedRefreshToken()));
-		oauthToken.update(null, googleToken.expiresIn(), googleToken.scope());
+		GoogleToken googleToken = refreshGoogleAccessToken(userId, itemSource);
 		return switch (itemSource) {
 			case GMAIL -> getLiveGmailDetail(googleToken.accessToken(), externalItemId.trim());
 			case DRIVE -> getLiveDriveDetail(googleToken.accessToken(), externalItemId.trim());
 		};
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public StorageTrashPageResponse getTrashItems(Long userId, ItemSource itemSource, Integer page, Integer size) {
-		if (!userRepository.existsById(userId)) {
-			throw new CustomException(ErrorCode.USER_NOT_FOUND);
+		int normalizedPage = normalizePage(page);
+		int normalizedSize = normalizeSize(size);
+		if (itemSource == null) {
+			GoogleToken googleToken = refreshGoogleAccessToken(userId, ItemSource.GMAIL);
+			StorageTrashPageResponse gmailResponse = getLiveGmailTrashItems(userId, googleToken.accessToken(),
+				normalizedPage, normalizedSize);
+			StorageTrashPageResponse driveResponse = getLiveDriveTrashItems(userId, googleToken.accessToken(),
+				normalizedPage, normalizedSize);
+			List<StorageTrashItemResponse> content = new ArrayList<>();
+			content.addAll(gmailResponse.content());
+			content.addAll(driveResponse.content());
+			content.sort(Comparator.comparing(StorageTrashItemResponse::trashedAt,
+				Comparator.nullsLast(Comparator.reverseOrder())));
+			List<StorageTrashItemResponse> pagedContent = content.stream()
+				.limit(normalizedSize)
+				.toList();
+			return StorageTrashPageResponse.live(pagedContent, normalizedPage, normalizedSize,
+				gmailResponse.totalElements() + driveResponse.totalElements());
 		}
-		Pageable pageable = PageRequest.of(normalizePage(page), normalizeSize(size),
-			Sort.by(Sort.Order.desc("trashedAt"), Sort.Order.desc("itemId")));
-		Page<ScannedItem> items = scannedItemRepository.findAll(createTrashSpecification(userId, itemSource), pageable);
-		List<StorageTrashItemResponse> content = items.getContent().stream()
-			.map(StorageTrashItemResponse::from)
-			.toList();
-		return StorageTrashPageResponse.from(items, content);
+		GoogleToken googleToken = refreshGoogleAccessToken(userId, itemSource);
+		return switch (itemSource) {
+			case GMAIL -> getLiveGmailTrashItems(userId, googleToken.accessToken(), normalizedPage, normalizedSize);
+			case DRIVE -> getLiveDriveTrashItems(userId, googleToken.accessToken(), normalizedPage, normalizedSize);
+		};
 	}
 
 	@Transactional
@@ -192,6 +208,178 @@ public class StorageItemService {
 			.toList();
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
 		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
+	private GoogleToken refreshGoogleAccessToken(Long userId, ItemSource itemSource) {
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
+			.orElseThrow(() -> new CustomException(resolvePermissionError(itemSource)));
+		validateToken(oauthToken, itemSource);
+		GoogleToken googleToken = googleOAuthClient.refreshAccessToken(tokenEncryptionService.decrypt(oauthToken.getEncryptedRefreshToken()));
+		oauthToken.update(null, googleToken.expiresIn(), googleToken.scope());
+		return googleToken;
+	}
+
+	private StorageItemPageResponse getLiveGmailItems(Long userId, String accessToken, Boolean trashed, int page,
+		int size) {
+		try {
+			Gmail gmail = createGmail(accessToken);
+			ListMessagesResponse response = getGmailMessagePage(gmail, createGmailStorageQuery(trashed), page, size);
+			List<Message> messages = response.getMessages() == null ? List.of() : response.getMessages();
+			Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.GMAIL,
+				messages.stream().map(Message::getId).toList());
+			List<StorageItemListItemResponse> content = new ArrayList<>();
+			for (Message listedMessage : messages) {
+				Message message = gmail.users().messages().get(GOOGLE_USER_ID, listedMessage.getId())
+					.setFormat("metadata")
+					.setMetadataHeaders(List.of("Subject", "From"))
+					.setFields(GMAIL_MESSAGE_FIELDS)
+					.execute();
+				content.add(toGmailListItem(message, snapshotItemIds.get(message.getId())));
+			}
+			return StorageItemPageResponse.live(content, page, size, resolveTotalElements(response.getResultSizeEstimate(), page, size, content.size()));
+		} catch (IOException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED);
+		}
+	}
+
+	private StorageItemPageResponse getLiveDriveItems(Long userId, String accessToken, Boolean trashed, String sort,
+		int page, int size) {
+		try {
+			FileList fileList = getDriveFilePage(createDrive(accessToken), createDriveStorageQuery(trashed),
+				createDriveOrderBy(sort), page, size);
+			List<File> files = fileList.getFiles() == null ? List.of() : fileList.getFiles();
+			Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.DRIVE,
+				files.stream().map(File::getId).toList());
+			List<StorageItemListItemResponse> content = files.stream()
+				.map(file -> toDriveListItem(file, snapshotItemIds.get(file.getId())))
+				.toList();
+			return StorageItemPageResponse.live(content, page, size, resolveTotalElements(null, page, size, content.size()));
+		} catch (IOException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED);
+		}
+	}
+
+	private StorageTrashPageResponse getLiveGmailTrashItems(Long userId, String accessToken, int page, int size) {
+		StorageItemPageResponse response = getLiveGmailItems(userId, accessToken, true, page, size);
+		List<StorageTrashItemResponse> content = response.content().stream()
+			.map(item -> StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
+				item.title(), item.sizeBytes(), item.trashedAt()))
+			.toList();
+		return StorageTrashPageResponse.live(content, page, size, response.totalElements());
+	}
+
+	private StorageTrashPageResponse getLiveDriveTrashItems(Long userId, String accessToken, int page, int size) {
+		StorageItemPageResponse response = getLiveDriveItems(userId, accessToken, true, "modified_desc", page, size);
+		List<StorageTrashItemResponse> content = response.content().stream()
+			.map(item -> StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
+				item.title(), item.sizeBytes(), item.trashedAt()))
+			.toList();
+		return StorageTrashPageResponse.live(content, page, size, response.totalElements());
+	}
+
+	private ListMessagesResponse getGmailMessagePage(Gmail gmail, String query, int page, int size) throws IOException {
+		String pageToken = null;
+		ListMessagesResponse response = new ListMessagesResponse();
+		for (int index = 0; index <= page; index++) {
+			response = gmail.users().messages().list(GOOGLE_USER_ID)
+				.setQ(query)
+				.setMaxResults((long)size)
+				.setFields(GMAIL_LIST_FIELDS)
+				.setPageToken(pageToken)
+				.execute();
+			pageToken = response.getNextPageToken();
+			if (pageToken == null && index < page) return new ListMessagesResponse().setMessages(List.of());
+		}
+		return response;
+	}
+
+	private FileList getDriveFilePage(Drive drive, String query, String orderBy, int page, int size) throws IOException {
+		String pageToken = null;
+		FileList fileList = new FileList();
+		for (int index = 0; index <= page; index++) {
+			fileList = drive.files().list()
+				.setQ(query)
+				.setFields(DRIVE_LIST_FIELDS)
+				.setPageSize(size)
+				.setPageToken(pageToken)
+				.setOrderBy(orderBy)
+				.setSupportsAllDrives(true)
+				.setIncludeItemsFromAllDrives(true)
+				.execute();
+			pageToken = fileList.getNextPageToken();
+			if (pageToken == null && index < page) return new FileList().setFiles(List.of());
+		}
+		return fileList;
+	}
+
+	private Map<String, Long> findSnapshotItemIds(Long userId, ItemSource itemSource, List<String> externalItemIds) {
+		if (externalItemIds.isEmpty()) return Map.of();
+		Map<String, Long> itemIds = new LinkedHashMap<>();
+		scannedItemRepository.findLatestSnapshots(userId, itemSource, externalItemIds)
+			.forEach(item -> itemIds.putIfAbsent(item.getExternalItemId(), item.getItemId()));
+		return itemIds;
+	}
+
+	private StorageItemListItemResponse toGmailListItem(Message message, Long itemId) {
+		List<String> labelIds = message.getLabelIds() == null ? List.of() : message.getLabelIds();
+		return StorageItemListItemResponse.live(
+			itemId,
+			ItemSource.GMAIL,
+			message.getId(),
+			header(message, "Subject"),
+			toLong(message.getSizeEstimate()),
+			"message/rfc822",
+			null,
+			toLocalDateTime(message.getInternalDate()),
+			null,
+			false,
+			labelIds.contains("TRASH"),
+			null
+		);
+	}
+
+	private StorageItemListItemResponse toDriveListItem(File file, Long itemId) {
+		return StorageItemListItemResponse.live(
+			itemId,
+			ItemSource.DRIVE,
+			file.getId(),
+			file.getName(),
+			file.getSize(),
+			file.getMimeType(),
+			extractExtension(file.getName()),
+			toLocalDateTime(file.getModifiedTime()),
+			toLocalDateTime(file.getViewedByMeTime()),
+			Boolean.TRUE.equals(file.getShared()),
+			Boolean.TRUE.equals(file.getTrashed()),
+			toLocalDateTime(file.getTrashedTime())
+		);
+	}
+
+	private String createGmailStorageQuery(Boolean trashed) {
+		if (trashed == null) return null;
+		return Boolean.TRUE.equals(trashed) ? "in:trash" : "-in:trash";
+	}
+
+	private String createDriveStorageQuery(Boolean trashed) {
+		String query = "mimeType != '" + FOLDER_MIME_TYPE + "'";
+		if (trashed == null) return query;
+		return query + " and trashed = " + Boolean.TRUE.equals(trashed);
+	}
+
+	private String createDriveOrderBy(String sort) {
+		return switch (sort == null ? "" : sort) {
+			case "size_desc" -> "quotaBytesUsed desc";
+			case "created_desc" -> "createdTime desc";
+			case "oldest" -> "createdTime";
+			default -> "modifiedTime desc";
+		};
+	}
+
+	private long resolveTotalElements(Long estimatedTotal, int page, int size, int contentSize) {
+		if (estimatedTotal != null) return estimatedTotal;
+		return (long)page * size + contentSize;
 	}
 
 	private void validatePermanentDeleteRequest(StoragePermanentDeleteRequest request) {

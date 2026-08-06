@@ -20,4 +20,10 @@ public record StorageItemPageResponse(
 			page.getTotalPages()
 		);
 	}
+
+	public static StorageItemPageResponse live(List<StorageItemListItemResponse> content, int page, int size,
+		long totalElements) {
+		int totalPages = size <= 0 ? 0 : (int)Math.ceil((double)totalElements / size);
+		return new StorageItemPageResponse(content, page, size, totalElements, totalPages);
+	}
 }

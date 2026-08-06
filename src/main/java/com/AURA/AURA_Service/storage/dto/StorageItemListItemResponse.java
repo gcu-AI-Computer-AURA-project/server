@@ -35,4 +35,23 @@ public record StorageItemListItemResponse(
 			item.getTrashedAt()
 		);
 	}
+
+	public static StorageItemListItemResponse live(Long itemId, ItemSource itemSource, String externalItemId,
+		String title, Long sizeBytes, String mimeType, String fileExtension, LocalDateTime modifiedTime,
+		LocalDateTime lastOpenedTime, boolean isShared, boolean isTrashed, LocalDateTime trashedAt) {
+		return new StorageItemListItemResponse(
+			itemId,
+			itemSource,
+			externalItemId,
+			title,
+			sizeBytes,
+			mimeType,
+			fileExtension,
+			modifiedTime,
+			lastOpenedTime,
+			isShared,
+			isTrashed,
+			trashedAt
+		);
+	}
 }
