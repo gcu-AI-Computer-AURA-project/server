@@ -114,14 +114,22 @@ public class StorageItemService {
 		};
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public StorageItemDetailResponse getItem(Long userId, Long itemId) {
 		if (!userRepository.existsById(userId)) {
 			throw new CustomException(ErrorCode.USER_NOT_FOUND);
 		}
 		ScannedItem item = scannedItemRepository.findDetailByItemIdAndUserId(itemId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
-		return StorageItemDetailResponse.fromSnapshot(item);
+		if (item.getExternalItemId() == null || item.getExternalItemId().isBlank()) {
+			return StorageItemDetailResponse.fromSnapshot(item);
+		}
+		GoogleToken googleToken = refreshGoogleAccessToken(userId, item.getItemSource());
+		StorageItemLiveDetailResponse liveMetadata = switch (item.getItemSource()) {
+			case GMAIL -> getLiveGmailDetail(googleToken.accessToken(), item.getExternalItemId());
+			case DRIVE -> getLiveDriveDetail(googleToken.accessToken(), item.getExternalItemId());
+		};
+		return StorageItemDetailResponse.fromLiveMetadata(item, liveMetadata);
 	}
 
 	@Transactional
