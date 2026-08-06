@@ -7,11 +7,13 @@ import com.AURA.AURA_Service.cleanup.domain.CleanupJob;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJob.ActionType;
 import com.AURA.AURA_Service.cleanup.domain.CleanupHistory;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem;
+import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem.ProcessStatus;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobRetryFailedResponse;
 import com.AURA.AURA_Service.cleanup.repository.CarbonSavingHistoryRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupHistoryRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
@@ -112,6 +114,20 @@ public class CleanupJobService {
 			.findByCleanupHistoryHistoryId(cleanupHistory.getHistoryId())
 			.orElse(null);
 		return CleanupJobResultResponse.from(cleanupHistory, carbonSavingHistory);
+	}
+
+	@Transactional
+	public CleanupJobRetryFailedResponse retryFailed(Long userId, Long cleanupJobId) {
+		CleanupJob cleanupJob = cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+		List<CleanupJobItem> failedItems = cleanupJobItemRepository
+			.findByCleanupJobCleanupJobIdAndProcessStatusOrderByCleanupItemIdAsc(cleanupJobId, ProcessStatus.FAILED);
+		if (failedItems.isEmpty()) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		failedItems.forEach(CleanupJobItem::retryPending);
+		cleanupJob.retryFailedItems(failedItems.size());
+		return CleanupJobRetryFailedResponse.from(cleanupJob, failedItems.size());
 	}
 
 	private void validateRequest(CleanupJobCreateRequest request) {
