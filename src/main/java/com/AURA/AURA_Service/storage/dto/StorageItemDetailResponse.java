@@ -45,4 +45,26 @@ public record StorageItemDetailResponse(
 			item.getCreatedAt()
 		);
 	}
+
+	public static StorageItemDetailResponse fromLiveMetadata(ScannedItem item, StorageItemLiveDetailResponse liveMetadata) {
+		return new StorageItemDetailResponse(
+			item.getItemId(),
+			item.getScanJobId(),
+			item.getItemSource(),
+			item.getExternalItemId(),
+			liveMetadata.title(),
+			liveMetadata.mimeType(),
+			liveMetadata.fileExtension(),
+			liveMetadata.folderPath(),
+			liveMetadata.sizeBytes(),
+			liveMetadata.createdTime(),
+			liveMetadata.modifiedTime(),
+			liveMetadata.lastOpenedTime(),
+			liveMetadata.isShared(),
+			liveMetadata.ownerEmail(),
+			liveMetadata.isTrashed(),
+			liveMetadata.liveMetadataRefreshed(),
+			item.getCreatedAt()
+		);
+	}
 }
