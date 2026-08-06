@@ -24,6 +24,8 @@ import com.AURA.AURA_Service.storage.dto.StorageItemListItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemLiveDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemPageResponse;
 import com.AURA.AURA_Service.storage.dto.StoragePermanentDeleteRequest;
+import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest;
+import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest.TargetSource;
 import com.AURA.AURA_Service.storage.dto.StorageTrashItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageTrashPageResponse;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
@@ -67,6 +69,7 @@ public class StorageItemService {
 	private static final int DEFAULT_SIZE = 30;
 	private static final int MAX_SIZE = 100;
 	private static final String PERMANENT_DELETE_CONFIRMATION_TEXT = "\uc601\uad6c\uc0ad\uc81c";
+	private static final String EMPTY_TRASH_CONFIRMATION_TEXT = "\ud734\uc9c0\ud1b5\ube44\uc6b0\uae30";
 
 	private final UserRepository userRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
@@ -160,6 +163,37 @@ public class StorageItemService {
 		return CleanupJobCreateResponse.from(cleanupJob);
 	}
 
+	@Transactional
+	public CleanupJobCreateResponse emptyTrash(Long userId, StorageTrashEmptyRequest request) {
+		validateEmptyTrashRequest(request);
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		ItemSource itemSource = toItemSource(request.targetSource());
+		List<ScannedItem> trashItems = scannedItemRepository.findAll(createTrashSpecification(userId, itemSource),
+			Sort.by(Sort.Order.asc("itemSource"), Sort.Order.asc("itemId")));
+		if (trashItems.isEmpty()) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		trashItems.forEach(this::validateCleanupExternalItemId);
+		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.EMPTY_TRASH,
+			countScannedItemsBySource(trashItems, ItemSource.GMAIL),
+			countScannedItemsBySource(trashItems, ItemSource.DRIVE),
+			sumScannedItemBytes(trashItems),
+			LocalDateTime.now()));
+		List<CleanupJobItem> cleanupJobItems = trashItems.stream()
+			.map(item -> CleanupJobItem.directSnapshot(
+				cleanupJob,
+				item,
+				item.getItemSource(),
+				item.getExternalItemId(),
+				item.getTitle(),
+				item.getEstimatedReclaimBytes()
+			))
+			.toList();
+		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
 	private void validatePermanentDeleteRequest(StoragePermanentDeleteRequest request) {
 		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
 			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
@@ -223,6 +257,41 @@ public class StorageItemService {
 	private long sumSnapshotBytes(List<StoragePermanentDeleteRequest.ItemRequest> items) {
 		return items.stream()
 			.mapToLong(StoragePermanentDeleteRequest.ItemRequest::snapshotSizeBytes)
+			.sum();
+	}
+
+	private void validateEmptyTrashRequest(StorageTrashEmptyRequest request) {
+		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		if (!EMPTY_TRASH_CONFIRMATION_TEXT.equals(request.confirmationText())) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+	}
+
+	private ItemSource toItemSource(TargetSource targetSource) {
+		return switch (targetSource) {
+			case GMAIL -> ItemSource.GMAIL;
+			case DRIVE -> ItemSource.DRIVE;
+			case ALL -> null;
+		};
+	}
+
+	private void validateCleanupExternalItemId(ScannedItem item) {
+		if (item.getExternalItemId() == null || item.getExternalItemId().isBlank()) {
+			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
+		}
+	}
+
+	private int countScannedItemsBySource(List<ScannedItem> items, ItemSource itemSource) {
+		return (int)items.stream()
+			.filter(item -> item.getItemSource() == itemSource)
+			.count();
+	}
+
+	private long sumScannedItemBytes(List<ScannedItem> items) {
+		return items.stream()
+			.mapToLong(ScannedItem::getEstimatedReclaimBytes)
 			.sum();
 	}
 
