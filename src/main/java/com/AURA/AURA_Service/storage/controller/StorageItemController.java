@@ -37,9 +37,9 @@ public class StorageItemController {
 	}
 
 	@Operation(summary = "저장소 항목 상세 조회", description = "현재 로그인한 사용자의 스캔 저장소 항목 상세 정보를 조회합니다.")
-	@GetMapping("/{itemId}")
+	@GetMapping("/{item_id}")
 	public ResponseEntity<ApiResponse<StorageItemDetailResponse>> getItem(@AuthenticationPrincipal String userId,
-		@PathVariable("itemId") Long itemId) {
+		@PathVariable("item_id") Long itemId) {
 		return ResponseEntity.ok(ApiResponse.success(storageItemService.getItem(Long.valueOf(userId), itemId)));
 	}
 

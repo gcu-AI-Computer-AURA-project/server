@@ -35,16 +35,16 @@ public class AnnouncementController {
 	}
 
 	@Operation(summary = "공지사항 상세 조회", description = "공지사항 본문과 사용자의 읽음 상태를 조회합니다.")
-	@GetMapping("/{announcementId}")
+	@GetMapping("/{announcement_id}")
 	public ResponseEntity<ApiResponse<AnnouncementDetailResponse>> getDetail(@AuthenticationPrincipal String userId,
-		@PathVariable Long announcementId) {
+		@PathVariable("announcement_id") Long announcementId) {
 		return ResponseEntity.ok(ApiResponse.success(announcementService.getDetail(Long.valueOf(userId), announcementId)));
 	}
 
 	@Operation(summary = "공지사항 읽음 처리", description = "사용자가 확인한 공지사항의 읽음 기록을 저장합니다.")
-	@PostMapping("/{announcementId}/read")
+	@PostMapping("/{announcement_id}/read")
 	public ResponseEntity<ApiResponse<AnnouncementReadResponse>> read(@AuthenticationPrincipal String userId,
-		@PathVariable Long announcementId) {
+		@PathVariable("announcement_id") Long announcementId) {
 		return ResponseEntity.ok(ApiResponse.success(announcementService.read(Long.valueOf(userId), announcementId)));
 	}
 }
