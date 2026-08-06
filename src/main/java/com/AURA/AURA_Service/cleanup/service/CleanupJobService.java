@@ -14,6 +14,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobRetryFailedResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobStartResponse;
 import com.AURA.AURA_Service.cleanup.repository.CarbonSavingHistoryRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupHistoryRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
@@ -87,6 +88,14 @@ public class CleanupJobService {
 			.toList();
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
 		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
+	@Transactional
+	public CleanupJobStartResponse start(Long userId, Long cleanupJobId) {
+		CleanupJob cleanupJob = cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+		cleanupJob.start();
+		return CleanupJobStartResponse.from(cleanupJob);
 	}
 
 	@Transactional(readOnly = true)

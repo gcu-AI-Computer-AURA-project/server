@@ -67,6 +67,15 @@ public class CleanupJob {
 		updateProgressBySuccessCount();
 	}
 
+	public void start() {
+		this.jobStatus = JobStatus.PROCESSING;
+		this.completedAt = null;
+		this.errorMessage = null;
+		if (this.progressPercent == null) {
+			this.progressPercent = new BigDecimal("0.00");
+		}
+	}
+
 	public Long getCleanupJobId() { return cleanupJobId; }
 	public Long getScanJobId() { return scanJob == null ? null : scanJob.getScanJobId(); }
 	public ActionType getActionType() { return actionType; }
