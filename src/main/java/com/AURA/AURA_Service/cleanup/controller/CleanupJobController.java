@@ -6,6 +6,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobRetryFailedResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobStartResponse;
 import com.AURA.AURA_Service.cleanup.service.CleanupJobService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +37,14 @@ public class CleanupJobController {
 		CleanupJobCreateResponse response = cleanupJobService.create(Long.valueOf(userId), request);
 		return ResponseEntity.created(URI.create("/api/cleanup-jobs/" + response.cleanupJobId()))
 			.body(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "정리 작업 실행 시작", description = "정리 작업을 진행 중 상태로 변경하고 실행 시작 응답을 반환합니다.")
+	@PostMapping("/{cleanup_job_id}/start")
+	public ResponseEntity<ApiResponse<CleanupJobStartResponse>> start(@AuthenticationPrincipal String userId,
+		@PathVariable("cleanup_job_id") Long cleanupJobId) {
+		CleanupJobStartResponse response = cleanupJobService.start(Long.valueOf(userId), cleanupJobId);
+		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 
 	@Operation(summary = "정리 작업 상세 및 진행 상태 조회", description = "정리 작업의 선택 항목 수, 처리 결과, 진행률과 오류 메시지를 조회합니다.")
