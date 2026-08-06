@@ -2,6 +2,7 @@ package com.AURA.AURA_Service.scan.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +13,8 @@ public class ScanJobExecutionLauncher {
 	private final TaskExecutor scanTaskExecutor;
 	private final ScanJobExecutionService scanJobExecutionService;
 
-	public ScanJobExecutionLauncher(TaskExecutor scanTaskExecutor, ScanJobExecutionService scanJobExecutionService) {
+	public ScanJobExecutionLauncher(@Qualifier("scanTaskExecutor") TaskExecutor scanTaskExecutor,
+		ScanJobExecutionService scanJobExecutionService) {
 		this.scanTaskExecutor = scanTaskExecutor;
 		this.scanJobExecutionService = scanJobExecutionService;
 	}

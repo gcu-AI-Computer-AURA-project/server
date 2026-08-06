@@ -76,7 +76,23 @@ public class CleanupJob {
 		}
 	}
 
+	public void complete(int successItemCount, int failedItemCount, LocalDateTime completedAt) {
+		this.successItemCount = successItemCount;
+		this.failedItemCount = failedItemCount;
+		this.completedAt = completedAt;
+		this.progressPercent = new BigDecimal("100.00");
+		if (failedItemCount == 0) {
+			this.jobStatus = JobStatus.COMPLETED;
+			this.errorMessage = null;
+			return;
+		}
+		this.jobStatus = successItemCount == 0 ? JobStatus.FAILED : JobStatus.PARTIAL_FAILED;
+		this.errorMessage = "Some cleanup items failed.";
+	}
+
 	public Long getCleanupJobId() { return cleanupJobId; }
+	public User getUser() { return user; }
+	public ScanJob getScanJob() { return scanJob; }
 	public Long getScanJobId() { return scanJob == null ? null : scanJob.getScanJobId(); }
 	public ActionType getActionType() { return actionType; }
 	public JobStatus getJobStatus() { return jobStatus; }

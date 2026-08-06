@@ -75,6 +75,18 @@ public class CleanupJobItem {
 		this.processedAt = null;
 	}
 
+	public void markSuccess(LocalDateTime processedAt) {
+		this.processStatus = ProcessStatus.SUCCESS;
+		this.failureReason = null;
+		this.processedAt = processedAt;
+	}
+
+	public void markFailed(String failureReason, LocalDateTime processedAt) {
+		this.processStatus = ProcessStatus.FAILED;
+		this.failureReason = trimFailureReason(failureReason);
+		this.processedAt = processedAt;
+	}
+
 	public Long getCleanupItemId() { return cleanupItemId; }
 	public ItemSource getItemSource() { return itemSource; }
 	public String getExternalItemId() { return externalItemId; }
@@ -84,6 +96,11 @@ public class CleanupJobItem {
 	public ProcessStatus getProcessStatus() { return processStatus; }
 	public String getFailureReason() { return failureReason; }
 	public LocalDateTime getProcessedAt() { return processedAt; }
+
+	private String trimFailureReason(String failureReason) {
+		if (failureReason == null || failureReason.isBlank()) return "Cleanup item processing failed.";
+		return failureReason.length() > 500 ? failureReason.substring(0, 500) : failureReason;
+	}
 
 	public enum ProcessStatus {
 		PENDING,

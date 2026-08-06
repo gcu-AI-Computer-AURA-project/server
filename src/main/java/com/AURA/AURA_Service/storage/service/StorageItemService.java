@@ -14,6 +14,7 @@ import com.AURA.AURA_Service.cleanup.domain.CleanupJobItem;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobItemRepository;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
+import com.AURA.AURA_Service.cleanup.service.CleanupJobExecutionLauncher;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.AURA.AURA_Service.scan.domain.ScannedItem;
@@ -88,11 +89,13 @@ public class StorageItemService {
 	private final ScannedItemRepository scannedItemRepository;
 	private final CleanupJobRepository cleanupJobRepository;
 	private final CleanupJobItemRepository cleanupJobItemRepository;
+	private final CleanupJobExecutionLauncher cleanupJobExecutionLauncher;
 
 	public StorageItemService(UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
 		TokenEncryptionService tokenEncryptionService, GoogleOAuthClient googleOAuthClient,
 		ScannedItemRepository scannedItemRepository, CleanupJobRepository cleanupJobRepository,
-		CleanupJobItemRepository cleanupJobItemRepository) {
+		CleanupJobItemRepository cleanupJobItemRepository,
+		CleanupJobExecutionLauncher cleanupJobExecutionLauncher) {
 		this.userRepository = userRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
 		this.tokenEncryptionService = tokenEncryptionService;
@@ -100,6 +103,7 @@ public class StorageItemService {
 		this.scannedItemRepository = scannedItemRepository;
 		this.cleanupJobRepository = cleanupJobRepository;
 		this.cleanupJobItemRepository = cleanupJobItemRepository;
+		this.cleanupJobExecutionLauncher = cleanupJobExecutionLauncher;
 	}
 
 	@Transactional
@@ -184,6 +188,7 @@ public class StorageItemService {
 			LocalDateTime.now()));
 		List<CleanupJobItem> cleanupJobItems = createPermanentDeleteItems(cleanupJob, userId, request.items());
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobCreateResponse.from(cleanupJob);
 	}
 
@@ -215,6 +220,7 @@ public class StorageItemService {
 			))
 			.toList();
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobCreateResponse.from(cleanupJob);
 	}
 

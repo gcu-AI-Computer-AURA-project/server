@@ -43,19 +43,22 @@ public class CleanupJobService {
 	private final CleanupJobItemRepository cleanupJobItemRepository;
 	private final CleanupHistoryRepository cleanupHistoryRepository;
 	private final CarbonSavingHistoryRepository carbonSavingHistoryRepository;
+	private final CleanupJobExecutionLauncher cleanupJobExecutionLauncher;
 
 	public CleanupJobService(UserRepository userRepository,
 		AnalysisCandidateRepository analysisCandidateRepository,
 		CleanupJobRepository cleanupJobRepository,
 		CleanupJobItemRepository cleanupJobItemRepository,
 		CleanupHistoryRepository cleanupHistoryRepository,
-		CarbonSavingHistoryRepository carbonSavingHistoryRepository) {
+		CarbonSavingHistoryRepository carbonSavingHistoryRepository,
+		CleanupJobExecutionLauncher cleanupJobExecutionLauncher) {
 		this.userRepository = userRepository;
 		this.analysisCandidateRepository = analysisCandidateRepository;
 		this.cleanupJobRepository = cleanupJobRepository;
 		this.cleanupJobItemRepository = cleanupJobItemRepository;
 		this.cleanupHistoryRepository = cleanupHistoryRepository;
 		this.carbonSavingHistoryRepository = carbonSavingHistoryRepository;
+		this.cleanupJobExecutionLauncher = cleanupJobExecutionLauncher;
 	}
 
 	@Transactional
@@ -87,6 +90,7 @@ public class CleanupJobService {
 			.map(candidate -> CleanupJobItem.snapshot(cleanupJob, candidate))
 			.toList();
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobCreateResponse.from(cleanupJob);
 	}
 
@@ -95,6 +99,7 @@ public class CleanupJobService {
 		CleanupJob cleanupJob = cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
 		cleanupJob.start();
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobStartResponse.from(cleanupJob);
 	}
 
@@ -136,6 +141,7 @@ public class CleanupJobService {
 		}
 		failedItems.forEach(CleanupJobItem::retryPending);
 		cleanupJob.retryFailedItems(failedItems.size());
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobRetryFailedResponse.from(cleanupJob, failedItems.size());
 	}
 

@@ -33,6 +33,20 @@ public class CleanupHistory {
 
 	protected CleanupHistory() { }
 
+	public static CleanupHistory create(User user, CleanupJob cleanupJob, ScanJob scanJob, ActionType actionType,
+		int cleanedItemCount, long reclaimedBytes, Long remainingDriveBytes, LocalDateTime completedAt) {
+		CleanupHistory cleanupHistory = new CleanupHistory();
+		cleanupHistory.user = user;
+		cleanupHistory.cleanupJob = cleanupJob;
+		cleanupHistory.scanJob = scanJob;
+		cleanupHistory.actionType = actionType;
+		cleanupHistory.cleanedItemCount = cleanedItemCount;
+		cleanupHistory.reclaimedBytes = reclaimedBytes;
+		cleanupHistory.remainingDriveBytes = remainingDriveBytes;
+		cleanupHistory.completedAt = completedAt;
+		return cleanupHistory;
+	}
+
 	public Long getHistoryId() { return historyId; }
 	public Long getCleanupJobId() { return cleanupJob.getCleanupJobId(); }
 	public Integer getCleanedItemCount() { return cleanedItemCount; }
