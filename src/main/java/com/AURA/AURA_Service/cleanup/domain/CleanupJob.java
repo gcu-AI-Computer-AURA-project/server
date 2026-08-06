@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -58,6 +59,14 @@ public class CleanupJob {
 		return cleanupJob;
 	}
 
+	public void retryFailedItems(int retryItemCount) {
+		this.jobStatus = JobStatus.PROCESSING;
+		this.failedItemCount = Math.max(0, this.failedItemCount - retryItemCount);
+		this.completedAt = null;
+		this.errorMessage = null;
+		updateProgressBySuccessCount();
+	}
+
 	public Long getCleanupJobId() { return cleanupJobId; }
 	public Long getScanJobId() { return scanJob == null ? null : scanJob.getScanJobId(); }
 	public ActionType getActionType() { return actionType; }
@@ -71,6 +80,17 @@ public class CleanupJob {
 	public String getErrorMessage() { return errorMessage; }
 	public LocalDateTime getApprovedAt() { return approvedAt; }
 	public LocalDateTime getCompletedAt() { return completedAt; }
+
+	private void updateProgressBySuccessCount() {
+		int totalItemCount = selectedMailCount + selectedDriveCount;
+		if (totalItemCount <= 0) {
+			this.progressPercent = new BigDecimal("0.00");
+			return;
+		}
+		this.progressPercent = BigDecimal.valueOf(successItemCount)
+			.multiply(new BigDecimal("100.00"))
+			.divide(BigDecimal.valueOf(totalItemCount), 2, RoundingMode.HALF_UP);
+	}
 
 	public enum ActionType {
 		MOVE_TO_TRASH,

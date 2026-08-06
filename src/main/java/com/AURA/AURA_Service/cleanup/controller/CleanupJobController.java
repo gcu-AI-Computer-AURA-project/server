@@ -5,6 +5,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobRetryFailedResponse;
 import com.AURA.AURA_Service.cleanup.service.CleanupJobService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -58,6 +59,15 @@ public class CleanupJobController {
 	public ResponseEntity<ApiResponse<CleanupJobResultResponse>> getResult(@AuthenticationPrincipal String userId,
 		@PathVariable("cleanup_job_id") Long cleanupJobId) {
 		CleanupJobResultResponse response = cleanupJobService.getResult(Long.valueOf(userId), cleanupJobId);
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "실패 항목 재시도", description = "정리 작업에서 실패한 항목을 재시도 대상으로 되돌리고 작업 상태를 진행 중으로 변경합니다.")
+	@PostMapping("/{cleanup_job_id}/retry-failed")
+	public ResponseEntity<ApiResponse<CleanupJobRetryFailedResponse>> retryFailed(
+		@AuthenticationPrincipal String userId,
+		@PathVariable("cleanup_job_id") Long cleanupJobId) {
+		CleanupJobRetryFailedResponse response = cleanupJobService.retryFailed(Long.valueOf(userId), cleanupJobId);
 		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 }

@@ -55,6 +55,12 @@ public class CleanupJobItem {
 		return cleanupJobItem;
 	}
 
+	public void retryPending() {
+		this.processStatus = ProcessStatus.PENDING;
+		this.failureReason = null;
+		this.processedAt = null;
+	}
+
 	public Long getCleanupItemId() { return cleanupItemId; }
 	public ItemSource getItemSource() { return itemSource; }
 	public String getExternalItemId() { return externalItemId; }
