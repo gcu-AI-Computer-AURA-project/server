@@ -6,6 +6,7 @@ import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.storage.dto.StoragePermanentDeleteRequest;
 import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest;
 import com.AURA.AURA_Service.storage.dto.StorageTrashPageResponse;
+import com.AURA.AURA_Service.storage.dto.StorageTrashRestoreRequest;
 import com.AURA.AURA_Service.storage.service.StorageItemService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -29,7 +30,7 @@ public class StorageTrashController {
 		this.storageItemService = storageItemService;
 	}
 
-	@Operation(summary = "휴지통 항목 목록 조회", description = "현재 로그인한 사용자의 휴지통 항목 목록을 조회합니다.")
+	@Operation(summary = "휴지통 항목 목록 조회", description = "현재 로그인한 사용자의 Gmail/Drive 휴지통 항목 목록을 조회합니다.")
 	@GetMapping
 	public ResponseEntity<ApiResponse<StorageTrashPageResponse>> getTrashItems(@AuthenticationPrincipal String userId,
 		@RequestParam(value = "item_source", required = false) ItemSource itemSource,
@@ -37,6 +38,16 @@ public class StorageTrashController {
 		@RequestParam(value = "size", required = false) Integer size) {
 		return ResponseEntity.ok(ApiResponse.success(storageItemService.getTrashItems(Long.valueOf(userId),
 			itemSource, page, size)));
+	}
+
+	@Operation(summary = "휴지통 선택 항목 복구", description = "사용자가 승인한 휴지통 항목을 Gmail/Drive 원래 위치로 복구하는 작업을 생성합니다.")
+	@PostMapping("/restore")
+	public ResponseEntity<ApiResponse<CleanupJobCreateResponse>> restore(@AuthenticationPrincipal String userId,
+		@Valid @RequestBody StorageTrashRestoreRequest request) {
+		CleanupJobCreateResponse response = storageItemService.restoreTrashItems(Long.valueOf(userId), request);
+		return ResponseEntity.status(HttpStatus.CREATED)
+			.location(URI.create("/api/cleanup-jobs/" + response.cleanupJobId()))
+			.body(ApiResponse.success(response));
 	}
 
 	@Operation(summary = "휴지통 선택 항목 영구 삭제", description = "사용자가 최종 승인한 휴지통 항목을 영구 삭제 작업으로 생성합니다.")
@@ -49,7 +60,7 @@ public class StorageTrashController {
 			.body(ApiResponse.success(response));
 	}
 
-	@Operation(summary = "휴지통 비우기", description = "사용자가 최종 승인한 대상 범위의 휴지통 비우기 작업을 생성합니다.")
+	@Operation(summary = "휴지통 비우기", description = "사용자가 최종 승인한 범위의 휴지통 비우기 작업을 생성합니다.")
 	@PostMapping("/empty")
 	public ResponseEntity<ApiResponse<CleanupJobCreateResponse>> emptyTrash(@AuthenticationPrincipal String userId,
 		@Valid @RequestBody StorageTrashEmptyRequest request) {

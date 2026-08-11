@@ -46,6 +46,19 @@ public class GoogleOAuthClient {
 		return send(request, GoogleToken.class, ErrorCode.GOOGLE_AUTHENTICATION_FAILED);
 	}
 
+	public GoogleToken exchangeServerAuthCode(String serverAuthCode) {
+		validateConfiguration();
+		if (serverAuthCode == null || serverAuthCode.isBlank()) {
+			throw new CustomException(ErrorCode.GOOGLE_OAUTH_REQUEST_INVALID);
+		}
+		String form = "code=" + encode(serverAuthCode) + "&client_id=" + encode(clientId)
+			+ "&client_secret=" + encode(clientSecret) + "&grant_type=authorization_code";
+		HttpRequest request = HttpRequest.newBuilder(TOKEN_URI)
+			.header("Content-Type", "application/x-www-form-urlencoded")
+			.POST(HttpRequest.BodyPublishers.ofString(form)).build();
+		return send(request, GoogleToken.class, ErrorCode.GOOGLE_AUTHENTICATION_FAILED);
+	}
+
 	public GoogleUser getUserInfo(String accessToken) {
 		HttpRequest request = HttpRequest.newBuilder(USER_INFO_URI)
 			.header("Authorization", "Bearer " + accessToken).GET().build();
