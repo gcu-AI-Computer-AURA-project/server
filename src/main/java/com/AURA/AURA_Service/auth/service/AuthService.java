@@ -60,8 +60,7 @@ public class AuthService {
 
 	@Transactional
 	public GoogleLoginResponse login(GoogleLoginRequest request) {
-		validateRedirectUri(request.redirectUri());
-		GoogleToken googleToken = googleOAuthClient.exchangeCode(request.authorizationCode(), request.redirectUri());
+		GoogleToken googleToken = exchangeGoogleToken(request);
 		GoogleUser googleUser = googleOAuthClient.getUserInfo(googleToken.accessToken());
 
 		User user = userRepository.findByGoogleProviderId(googleUser.sub()).orElse(null);
@@ -72,6 +71,7 @@ public class AuthService {
 
 		OAuthToken oauthToken = oauthTokenRepository.findByUser(activeUser).orElseGet(() -> OAuthToken.create(activeUser));
 		String encryptedRefreshToken = googleToken.refreshToken() == null ? null : tokenEncryptionService.encrypt(googleToken.refreshToken());
+		validateRefreshTokenAvailable(oauthToken, encryptedRefreshToken);
 		oauthToken.update(encryptedRefreshToken, googleToken.expiresIn(), googleToken.scope());
 		oauthTokenRepository.save(oauthToken);
 		googlePermissionService.syncConnectedPermissions(activeUser, googleToken.scope());
@@ -116,6 +116,20 @@ public class AuthService {
 		}
 		if (!configuredRedirectUri.isBlank() && !configuredRedirectUri.equals(redirectUri)) {
 			throw new CustomException(ErrorCode.INVALID_REDIRECT_URI);
+		}
+	}
+
+	private GoogleToken exchangeGoogleToken(GoogleLoginRequest request) {
+		if (request.hasServerAuthCode()) {
+			return googleOAuthClient.exchangeServerAuthCode(request.serverAuthCode());
+		}
+		validateRedirectUri(request.redirectUri());
+		return googleOAuthClient.exchangeCode(request.authorizationCode(), request.redirectUri());
+	}
+
+	private void validateRefreshTokenAvailable(OAuthToken oauthToken, String encryptedRefreshToken) {
+		if (encryptedRefreshToken == null && oauthToken.getEncryptedRefreshToken() == null) {
+			throw new CustomException(ErrorCode.GOOGLE_ACCESS_DENIED);
 		}
 	}
 

@@ -29,6 +29,7 @@ import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest;
 import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest.TargetSource;
 import com.AURA.AURA_Service.storage.dto.StorageTrashItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageTrashPageResponse;
+import com.AURA.AURA_Service.storage.dto.StorageTrashRestoreRequest;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -183,6 +184,22 @@ public class StorageItemService {
 			sumSnapshotBytes(request.items()),
 			LocalDateTime.now()));
 		List<CleanupJobItem> cleanupJobItems = createPermanentDeleteItems(cleanupJob, userId, request.items());
+		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
+		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
+	@Transactional
+	public CleanupJobCreateResponse restoreTrashItems(Long userId, StorageTrashRestoreRequest request) {
+		validateRestoreRequest(request);
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.RESTORE_FROM_TRASH,
+			countRestoreItemsBySource(request.items(), ItemSource.GMAIL),
+			countRestoreItemsBySource(request.items(), ItemSource.DRIVE),
+			sumRestoreSnapshotBytes(request.items()),
+			LocalDateTime.now()));
+		List<CleanupJobItem> cleanupJobItems = createRestoreItems(cleanupJob, userId, request.items());
 		cleanupJobItemRepository.saveAll(cleanupJobItems);
 		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobCreateResponse.from(cleanupJob);
@@ -536,6 +553,68 @@ public class StorageItemService {
 	private long sumSnapshotBytes(List<StoragePermanentDeleteRequest.ItemRequest> items) {
 		return items.stream()
 			.mapToLong(StoragePermanentDeleteRequest.ItemRequest::snapshotSizeBytes)
+			.sum();
+	}
+
+	private void validateRestoreRequest(StorageTrashRestoreRequest request) {
+		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		Set<String> snapshotItemKeys = new HashSet<>();
+		for (StorageTrashRestoreRequest.ItemRequest item : request.items()) {
+			validateRestoreItem(item, snapshotItemKeys);
+		}
+	}
+
+	private void validateRestoreItem(StorageTrashRestoreRequest.ItemRequest item, Set<String> snapshotItemKeys) {
+		if (item.itemSource() == null) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
+			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
+		}
+		if (item.snapshotSizeBytes() != null && item.snapshotSizeBytes() < 0) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		String snapshotItemKey = item.itemSource().name() + ":" + item.externalItemId().trim();
+		if (!snapshotItemKeys.add(snapshotItemKey)) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+	}
+
+	private List<CleanupJobItem> createRestoreItems(CleanupJob cleanupJob, Long userId,
+		List<StorageTrashRestoreRequest.ItemRequest> items) {
+		return items.stream()
+			.map(item -> CleanupJobItem.directSnapshot(
+				cleanupJob,
+				findOptionalScannedItem(userId, item),
+				item.itemSource(),
+				item.externalItemId().trim(),
+				item.snapshotTitle(),
+				defaultZero(item.snapshotSizeBytes())
+			))
+			.toList();
+	}
+
+	private ScannedItem findOptionalScannedItem(Long userId, StorageTrashRestoreRequest.ItemRequest item) {
+		if (item.itemId() == null) return null;
+		ScannedItem scannedItem = scannedItemRepository.findDetailByItemIdAndUserId(item.itemId(), userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
+		if (scannedItem.getItemSource() != item.itemSource()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		return scannedItem;
+	}
+
+	private int countRestoreItemsBySource(List<StorageTrashRestoreRequest.ItemRequest> items, ItemSource itemSource) {
+		return (int)items.stream()
+			.filter(item -> item.itemSource() == itemSource)
+			.count();
+	}
+
+	private long sumRestoreSnapshotBytes(List<StorageTrashRestoreRequest.ItemRequest> items) {
+		return items.stream()
+			.mapToLong(item -> defaultZero(item.snapshotSizeBytes()))
 			.sum();
 	}
 

@@ -119,6 +119,7 @@ public class CleanupJob {
 
 	public enum ActionType {
 		MOVE_TO_TRASH,
+		RESTORE_FROM_TRASH,
 		PERMANENT_DELETE,
 		EMPTY_TRASH
 	}
