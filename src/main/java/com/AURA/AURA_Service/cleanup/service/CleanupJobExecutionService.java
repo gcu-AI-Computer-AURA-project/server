@@ -134,12 +134,22 @@ public class CleanupJobExecutionService {
 			gmail.users().messages().trash(GOOGLE_USER_ID, externalItemId).execute();
 			return;
 		}
+		if (actionType == ActionType.RESTORE_FROM_TRASH) {
+			gmail.users().messages().untrash(GOOGLE_USER_ID, externalItemId).execute();
+			return;
+		}
 		gmail.users().messages().delete(GOOGLE_USER_ID, externalItemId).execute();
 	}
 
 	private void processDriveItem(ActionType actionType, String externalItemId, Drive drive) throws IOException {
 		if (actionType == ActionType.MOVE_TO_TRASH) {
 			drive.files().update(externalItemId, new File().setTrashed(true))
+				.setSupportsAllDrives(true)
+				.execute();
+			return;
+		}
+		if (actionType == ActionType.RESTORE_FROM_TRASH) {
+			drive.files().update(externalItemId, new File().setTrashed(false))
 				.setSupportsAllDrives(true)
 				.execute();
 			return;
@@ -156,7 +166,7 @@ public class CleanupJobExecutionService {
 		int failedItemCount = countByStatus(items, ProcessStatus.FAILED);
 		LocalDateTime completedAt = LocalDateTime.now();
 		cleanupJob.complete(successItemCount, failedItemCount, completedAt);
-		if (failedItemCount == 0 && successItemCount > 0) {
+		if (cleanupJob.getActionType() != ActionType.RESTORE_FROM_TRASH && failedItemCount == 0 && successItemCount > 0) {
 			createCompletionHistory(cleanupJob, items, successItemCount, completedAt);
 		}
 	}
