@@ -511,6 +511,9 @@ public class StorageItemService {
 		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
 			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
 		}
+		if (item.snapshotTitle() == null || item.snapshotTitle().isBlank()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
 		if (item.snapshotSizeBytes() < 0) {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
 		}
@@ -572,6 +575,9 @@ public class StorageItemService {
 		}
 		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
 			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
+		}
+		if (item.snapshotTitle() == null || item.snapshotTitle().isBlank()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
 		}
 		if (item.snapshotSizeBytes() != null && item.snapshotSizeBytes() < 0) {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
