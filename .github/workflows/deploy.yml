@@ -86,9 +86,9 @@ jobs:
 
             FCM_CREDENTIAL_PATH=${{ secrets.FCM_CREDENTIAL_PATH }}
 
-            VERTEX_API_KEY=${{ secrets.VERTEX_API_KEY }}
-            VERTEX_API_URL=${{ secrets.VERTEX_API_URL }}
-            VERTEX_GEMINI_MODEL=${{ secrets.VERTEX_GEMINI_MODEL }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GEMINI_API_URL=${{ secrets.GEMINI_API_URL }}
+            GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}
 
             AURA_AI_PROVIDER=${{ secrets.AURA_AI_PROVIDER }}
             AURA_AI_ANALYSIS_ENABLED=${{ secrets.AURA_AI_ANALYSIS_ENABLED }}
