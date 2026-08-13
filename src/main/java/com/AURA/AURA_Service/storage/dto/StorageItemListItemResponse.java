@@ -13,6 +13,10 @@ public record StorageItemListItemResponse(
 	@JsonProperty("size_bytes") Long sizeBytes,
 	@JsonProperty("mime_type") String mimeType,
 	@JsonProperty("file_extension") String fileExtension,
+	@JsonProperty("item_type") String itemType,
+	@JsonProperty("is_folder") boolean isFolder,
+	@JsonProperty("parent_folder_id") String parentFolderId,
+	@JsonProperty("owner_email") String ownerEmail,
 	@JsonProperty("modified_time") LocalDateTime modifiedTime,
 	@JsonProperty("last_opened_time") LocalDateTime lastOpenedTime,
 	@JsonProperty("is_shared") boolean isShared,
@@ -28,6 +32,10 @@ public record StorageItemListItemResponse(
 			item.getSizeBytes(),
 			item.getMimeType(),
 			item.getFileExtension(),
+			"FILE",
+			false,
+			null,
+			null,
 			item.getModifiedTime(),
 			item.getLastOpenedTime(),
 			item.isShared(),
@@ -39,6 +47,14 @@ public record StorageItemListItemResponse(
 	public static StorageItemListItemResponse live(Long itemId, ItemSource itemSource, String externalItemId,
 		String title, Long sizeBytes, String mimeType, String fileExtension, LocalDateTime modifiedTime,
 		LocalDateTime lastOpenedTime, boolean isShared, boolean isTrashed, LocalDateTime trashedAt) {
+		return live(itemId, itemSource, externalItemId, title, sizeBytes, mimeType, fileExtension,
+			modifiedTime, lastOpenedTime, isShared, isTrashed, trashedAt, "FILE", false, null, null);
+	}
+
+	public static StorageItemListItemResponse live(Long itemId, ItemSource itemSource, String externalItemId,
+		String title, Long sizeBytes, String mimeType, String fileExtension, LocalDateTime modifiedTime,
+		LocalDateTime lastOpenedTime, boolean isShared, boolean isTrashed, LocalDateTime trashedAt,
+		String itemType, boolean isFolder, String parentFolderId, String ownerEmail) {
 		return new StorageItemListItemResponse(
 			itemId,
 			itemSource,
@@ -47,6 +63,10 @@ public record StorageItemListItemResponse(
 			sizeBytes,
 			mimeType,
 			fileExtension,
+			itemType,
+			isFolder,
+			parentFolderId,
+			ownerEmail,
 			modifiedTime,
 			lastOpenedTime,
 			isShared,

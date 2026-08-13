@@ -129,7 +129,7 @@ public class ScanJobService {
 		User user = findUser(userId);
 		ScanJob scanJob = scanJobRepository.findByScanJobIdAndUserAndDeletedAtIsNull(scanJobId, user)
 			.orElseThrow(() -> new CustomException(ErrorCode.SCAN_JOB_NOT_FOUND));
-		if (!RUNNING_STATUSES.contains(scanJob.getJobStatus())) {
+		if (!RUNNING_STATUSES.contains(scanJob.getJobStatus()) && !isCancelableEmptyResult(scanJob)) {
 			throw new CustomException(ErrorCode.SCAN_CANCEL_NOT_ALLOWED);
 		}
 		scanJob.markCanceled();
@@ -164,6 +164,14 @@ public class ScanJobService {
 				scanJobExecutionLauncher.launch(scanJobId);
 			}
 		});
+	}
+
+	private boolean isCancelableEmptyResult(ScanJob scanJob) {
+		return scanJob.getJobStatus() == JobStatus.COMPLETED && defaultZero(scanJob.getCandidateCount()) == 0;
+	}
+
+	private int defaultZero(Integer value) {
+		return value == null ? 0 : value;
 	}
 
 	private User findUser(Long userId) {
