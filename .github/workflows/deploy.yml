@@ -94,6 +94,9 @@ jobs:
             AURA_AI_ANALYSIS_ENABLED=${{ secrets.AURA_AI_ANALYSIS_ENABLED }}
             AURA_AI_BATCH_SIZE=${{ secrets.AURA_AI_BATCH_SIZE }}
             AURA_AI_REQUEST_TIMEOUT_SECONDS=${{ secrets.AURA_AI_REQUEST_TIMEOUT_SECONDS }}
+            AURA_GOOGLE_API_TIMEOUT_SECONDS=${{ secrets.AURA_GOOGLE_API_TIMEOUT_SECONDS }}
+            AURA_SCAN_GMAIL_MAX_MESSAGES=${{ secrets.AURA_SCAN_GMAIL_MAX_MESSAGES }}
+            AURA_SCAN_DRIVE_MAX_FILES=${{ secrets.AURA_SCAN_DRIVE_MAX_FILES }}
             EOF
 
             chmod 600 .env
