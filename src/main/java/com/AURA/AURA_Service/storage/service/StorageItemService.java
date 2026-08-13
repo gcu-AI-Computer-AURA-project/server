@@ -23,6 +23,7 @@ import com.AURA.AURA_Service.scan.repository.ScannedItemRepository;
 import com.AURA.AURA_Service.storage.dto.StorageItemDetailResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemListItemResponse;
 import com.AURA.AURA_Service.storage.dto.StorageItemLiveDetailResponse;
+import com.AURA.AURA_Service.storage.dto.StorageMoveToTrashRequest;
 import com.AURA.AURA_Service.storage.dto.StorageItemPageResponse;
 import com.AURA.AURA_Service.storage.dto.StoragePermanentDeleteRequest;
 import com.AURA.AURA_Service.storage.dto.StorageTrashEmptyRequest;
@@ -190,6 +191,22 @@ public class StorageItemService {
 	}
 
 	@Transactional
+	public CleanupJobCreateResponse moveItemsToTrash(Long userId, StorageMoveToTrashRequest request) {
+		validateMoveToTrashRequest(request);
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.MOVE_TO_TRASH,
+			countMoveItemsBySource(request.items(), ItemSource.GMAIL),
+			countMoveItemsBySource(request.items(), ItemSource.DRIVE),
+			sumMoveSnapshotBytes(request.items()),
+			LocalDateTime.now()));
+		List<CleanupJobItem> cleanupJobItems = createMoveToTrashItems(cleanupJob, userId, request.items());
+		cleanupJobItemRepository.saveAll(cleanupJobItems);
+		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
+		return CleanupJobCreateResponse.from(cleanupJob);
+	}
+
+	@Transactional
 	public CleanupJobCreateResponse restoreTrashItems(Long userId, StorageTrashRestoreRequest request) {
 		validateRestoreRequest(request);
 		User user = userRepository.findById(userId)
@@ -291,8 +308,7 @@ public class StorageItemService {
 	private StorageTrashPageResponse getLiveGmailTrashItems(Long userId, String accessToken, int page, int size) {
 		StorageItemPageResponse response = getLiveGmailItems(userId, accessToken, true, page, size);
 		List<StorageTrashItemResponse> content = response.content().stream()
-			.map(item -> StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
-				item.title(), item.sizeBytes(), item.trashedAt()))
+			.map(StorageTrashItemResponse::live)
 			.toList();
 		return StorageTrashPageResponse.live(content, page, size, response.totalElements());
 	}
@@ -300,8 +316,7 @@ public class StorageItemService {
 	private StorageTrashPageResponse getLiveDriveTrashItems(Long userId, String accessToken, int page, int size) {
 		StorageItemPageResponse response = getLiveDriveItems(userId, accessToken, true, "modified_desc", page, size);
 		List<StorageTrashItemResponse> content = response.content().stream()
-			.map(item -> StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
-				item.title(), item.sizeBytes(), item.trashedAt()))
+			.map(StorageTrashItemResponse::live)
 			.toList();
 		return StorageTrashPageResponse.live(content, page, size, response.totalElements());
 	}
@@ -343,8 +358,7 @@ public class StorageItemService {
 						.setFields(GMAIL_MESSAGE_FIELDS)
 						.execute();
 					StorageItemListItemResponse item = toGmailListItem(message, snapshotItemIds.get(message.getId()));
-					content.add(StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
-						item.title(), item.sizeBytes(), item.trashedAt()));
+					content.add(StorageTrashItemResponse.live(item));
 				}
 				pageToken = response.getNextPageToken();
 			} while (pageToken != null);
@@ -375,8 +389,7 @@ public class StorageItemService {
 				content.addAll(files.stream()
 					.map(file -> {
 						StorageItemListItemResponse item = toDriveListItem(file, snapshotItemIds.get(file.getId()));
-						return StorageTrashItemResponse.live(item.itemId(), item.itemSource(), item.externalItemId(),
-							item.title(), item.sizeBytes(), item.trashedAt());
+						return StorageTrashItemResponse.live(item);
 					})
 					.toList());
 				pageToken = fileList.getNextPageToken();
@@ -449,6 +462,7 @@ public class StorageItemService {
 	}
 
 	private StorageItemListItemResponse toDriveListItem(File file, Long itemId) {
+		boolean folder = isDriveFolder(file);
 		return StorageItemListItemResponse.live(
 			itemId,
 			ItemSource.DRIVE,
@@ -456,12 +470,16 @@ public class StorageItemService {
 			file.getName(),
 			file.getSize(),
 			file.getMimeType(),
-			extractExtension(file.getName()),
+			folder ? null : extractExtension(file.getName()),
 			toLocalDateTime(file.getModifiedTime()),
 			toLocalDateTime(file.getViewedByMeTime()),
 			Boolean.TRUE.equals(file.getShared()),
 			Boolean.TRUE.equals(file.getTrashed()),
-			toLocalDateTime(file.getTrashedTime())
+			toLocalDateTime(file.getTrashedTime()),
+			folder ? "FOLDER" : "FILE",
+			folder,
+			extractParentFolderId(file),
+			extractOwnerEmail(file)
 		);
 	}
 
@@ -471,9 +489,17 @@ public class StorageItemService {
 	}
 
 	private String createDriveStorageQuery(Boolean trashed) {
-		String query = "mimeType != '" + FOLDER_MIME_TYPE + "'";
-		if (trashed == null) return query;
-		return query + " and trashed = " + Boolean.TRUE.equals(trashed);
+		if (trashed == null) return "trashed = false";
+		return "trashed = " + Boolean.TRUE.equals(trashed);
+	}
+
+	private boolean isDriveFolder(File file) {
+		return FOLDER_MIME_TYPE.equals(file.getMimeType());
+	}
+
+	private String extractParentFolderId(File file) {
+		if (file.getParents() == null || file.getParents().isEmpty()) return null;
+		return file.getParents().get(0);
 	}
 
 	private String createDriveOrderBy(String sort) {
@@ -557,6 +583,73 @@ public class StorageItemService {
 		return items.stream()
 			.mapToLong(StoragePermanentDeleteRequest.ItemRequest::snapshotSizeBytes)
 			.sum();
+	}
+
+	private void validateMoveToTrashRequest(StorageMoveToTrashRequest request) {
+		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
+		Set<String> snapshotItemKeys = new HashSet<>();
+		for (StorageMoveToTrashRequest.ItemRequest item : request.items()) {
+			validateMoveToTrashItem(item, snapshotItemKeys);
+		}
+	}
+
+	private void validateMoveToTrashItem(StorageMoveToTrashRequest.ItemRequest item, Set<String> snapshotItemKeys) {
+		if (item.itemSource() == null) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
+			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
+		}
+		if (item.snapshotSizeBytes() != null && item.snapshotSizeBytes() < 0) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		String snapshotItemKey = item.itemSource().name() + ":" + item.externalItemId().trim();
+		if (!snapshotItemKeys.add(snapshotItemKey)) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+	}
+
+	private List<CleanupJobItem> createMoveToTrashItems(CleanupJob cleanupJob, Long userId,
+		List<StorageMoveToTrashRequest.ItemRequest> items) {
+		return items.stream()
+			.map(item -> CleanupJobItem.directSnapshot(
+				cleanupJob,
+				findOptionalScannedItem(userId, item),
+				item.itemSource(),
+				item.externalItemId().trim(),
+				resolveSnapshotTitle(item.snapshotTitle(), item.externalItemId()),
+				defaultZero(item.snapshotSizeBytes())
+			))
+			.toList();
+	}
+
+	private ScannedItem findOptionalScannedItem(Long userId, StorageMoveToTrashRequest.ItemRequest item) {
+		if (item.itemId() == null) return null;
+		ScannedItem scannedItem = scannedItemRepository.findDetailByItemIdAndUserId(item.itemId(), userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
+		if (scannedItem.getItemSource() != item.itemSource()) {
+			throw new CustomException(ErrorCode.INVALID_INPUT);
+		}
+		return scannedItem;
+	}
+
+	private int countMoveItemsBySource(List<StorageMoveToTrashRequest.ItemRequest> items, ItemSource itemSource) {
+		return (int)items.stream()
+			.filter(item -> item.itemSource() == itemSource)
+			.count();
+	}
+
+	private long sumMoveSnapshotBytes(List<StorageMoveToTrashRequest.ItemRequest> items) {
+		return items.stream()
+			.mapToLong(item -> defaultZero(item.snapshotSizeBytes()))
+			.sum();
+	}
+
+	private String resolveSnapshotTitle(String snapshotTitle, String externalItemId) {
+		if (snapshotTitle != null && !snapshotTitle.isBlank()) return snapshotTitle;
+		return externalItemId.trim();
 	}
 
 	private void validateRestoreRequest(StorageTrashRestoreRequest request) {
