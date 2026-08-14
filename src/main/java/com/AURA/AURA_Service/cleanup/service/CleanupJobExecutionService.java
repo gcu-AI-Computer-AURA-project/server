@@ -92,8 +92,7 @@ public class CleanupJobExecutionService {
 
 		cleanupJob.start();
 		GoogleToken googleToken;
-		try {
-			Long totalDriveBytes = null;
+		Long totalDriveBytes = null;
 		try {
 			googleToken = refreshGoogleAccessToken(cleanupJob.getUser());
 		} catch (RuntimeException exception) {
