@@ -191,8 +191,7 @@ public class GoogleMetadataCollector {
 				.setPageSize(pageSize(items, driveMaxFiles))
 				.setPageToken(currentPageToken)
 				.setOrderBy("modifiedTime")
-				.setSupportsAllDrives(true)
-				.setIncludeItemsFromAllDrives(true)
+				.setCorpora("user")
 				.execute());
 			if (fileList.getFiles() != null) {
 				for (File file : fileList.getFiles()) {
@@ -223,8 +222,7 @@ public class GoogleMetadataCollector {
 					.setPageSize(pageSize(items, driveMaxFiles))
 					.setPageToken(currentPageToken)
 					.setOrderBy("modifiedTime")
-					.setSupportsAllDrives(true)
-					.setIncludeItemsFromAllDrives(true)
+					.setCorpora("user")
 					.execute());
 				if (fileList.getFiles() != null) {
 					for (File file : fileList.getFiles()) {
@@ -395,7 +393,6 @@ public class GoogleMetadataCollector {
 		try {
 			File folder = executeWithRetry(() -> drive.files().get(folderId)
 				.setFields("id,name,parents")
-				.setSupportsAllDrives(true)
 				.execute());
 			String parentPath = resolveFolderPath(drive, extractParentId(folder), folderPathCache);
 			String folderPath = appendPath(parentPath, folder.getName());
@@ -411,7 +408,6 @@ public class GoogleMetadataCollector {
 		try {
 			File folder = executeWithRetry(() -> drive.files().get(folderId)
 				.setFields("id,name")
-				.setSupportsAllDrives(true)
 				.execute());
 			return folder.getName();
 		} catch (IOException exception) {
