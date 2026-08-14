@@ -150,18 +150,15 @@ public class CleanupJobExecutionService {
 	private void processDriveItem(ActionType actionType, String externalItemId, Drive drive) throws IOException {
 		if (actionType == ActionType.MOVE_TO_TRASH) {
 			drive.files().update(externalItemId, new File().setTrashed(true))
-				.setSupportsAllDrives(true)
 				.execute();
 			return;
 		}
 		if (actionType == ActionType.RESTORE_FROM_TRASH) {
 			drive.files().update(externalItemId, new File().setTrashed(false))
-				.setSupportsAllDrives(true)
 				.execute();
 			return;
 		}
 		drive.files().delete(externalItemId)
-			.setSupportsAllDrives(true)
 			.execute();
 	}
 

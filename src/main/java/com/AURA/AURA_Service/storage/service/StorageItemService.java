@@ -380,8 +380,7 @@ public class StorageItemService {
 					.setPageSize(EMPTY_TRASH_GOOGLE_PAGE_SIZE)
 					.setPageToken(pageToken)
 					.setOrderBy("modifiedTime desc")
-					.setSupportsAllDrives(true)
-					.setIncludeItemsFromAllDrives(true)
+					.setCorpora("user")
 					.execute();
 				List<File> files = fileList.getFiles() == null ? List.of() : fileList.getFiles();
 				Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.DRIVE,
@@ -426,8 +425,7 @@ public class StorageItemService {
 				.setPageSize(size)
 				.setPageToken(pageToken)
 				.setOrderBy(orderBy)
-				.setSupportsAllDrives(true)
-				.setIncludeItemsFromAllDrives(true)
+				.setCorpora("user")
 				.execute();
 			pageToken = fileList.getNextPageToken();
 			if (pageToken == null && index < page) return new FileList().setFiles(List.of());
@@ -809,7 +807,6 @@ public class StorageItemService {
 		try {
 			File file = createDrive(accessToken).files().get(externalItemId)
 				.setFields(DRIVE_FILE_FIELDS)
-				.setSupportsAllDrives(true)
 				.execute();
 			return new StorageItemLiveDetailResponse(
 				null,

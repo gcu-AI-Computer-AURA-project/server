@@ -70,8 +70,7 @@ public class DriveFolderService {
 				.setPageToken(normalize(pageToken))
 				.setPageSize(size)
 				.setOrderBy("folder,name")
-				.setSupportsAllDrives(true)
-				.setIncludeItemsFromAllDrives(true)
+				.setCorpora("user")
 				.execute();
 			return new DriveFolderResponse(toFolderItems(fileList.getFiles()), fileList.getNextPageToken());
 		} catch (IOException exception) {
