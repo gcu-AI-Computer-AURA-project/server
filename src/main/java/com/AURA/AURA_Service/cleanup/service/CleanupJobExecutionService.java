@@ -93,16 +93,22 @@ public class CleanupJobExecutionService {
 		cleanupJob.start();
 		GoogleToken googleToken;
 		try {
+			Long totalDriveBytes = null;
+		try {
 			googleToken = refreshGoogleAccessToken(cleanupJob.getUser());
 		} catch (RuntimeException exception) {
 			LocalDateTime processedAt = LocalDateTime.now();
 			pendingItems.forEach(item -> item.markFailed(exception.getMessage(), processedAt));
-			completeJob(cleanupJob);
+			completeJob(cleanupJob, null);
 			return;
 		}
 		try {
 			Gmail gmail = createGmail(googleToken.accessToken());
 			Drive drive = createDrive(googleToken.accessToken());
+			try {
+				About about = drive.about().get().setFields("storageQuota").execute();
+				totalDriveBytes = about.getStorageQuota().getLimit();
+			} catch (Exception ignored) { }
 			for (CleanupJobItem item : pendingItems) {
 				processItem(cleanupJob.getActionType(), item, gmail, drive);
 			}
@@ -112,7 +118,7 @@ public class CleanupJobExecutionService {
 				.filter(item -> item.getProcessStatus() == ProcessStatus.PENDING)
 				.forEach(item -> item.markFailed(exception.getMessage(), processedAt));
 		}
-		completeJob(cleanupJob);
+		completeJob(cleanupJob, totalDriveBytes);
 	}
 
 	private void processItem(ActionType actionType, CleanupJobItem item, Gmail gmail, Drive drive) {
@@ -160,7 +166,7 @@ public class CleanupJobExecutionService {
 			.execute();
 	}
 
-	private void completeJob(CleanupJob cleanupJob) {
+	private void completeJob(CleanupJob cleanupJob, Long totalDriveBytes) {
 		List<CleanupJobItem> items = cleanupJobItemRepository
 			.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJob.getCleanupJobId());
 		int successItemCount = countByStatus(items, ProcessStatus.SUCCESS);
@@ -168,12 +174,12 @@ public class CleanupJobExecutionService {
 		LocalDateTime completedAt = LocalDateTime.now();
 		cleanupJob.complete(successItemCount, failedItemCount, completedAt);
 		if (failedItemCount == 0 && successItemCount > 0 && cleanupJob.getActionType() != ActionType.RESTORE_FROM_TRASH) {
-			createCompletionHistory(cleanupJob, items, successItemCount, completedAt);
+			createCompletionHistory(cleanupJob, items, successItemCount, completedAt, totalDriveBytes);
 		}
 	}
 
 	private void createCompletionHistory(CleanupJob cleanupJob, List<CleanupJobItem> items, int successItemCount,
-		LocalDateTime completedAt) {
+		LocalDateTime completedAt, Long totalDriveBytes) {
 		if (cleanupHistoryRepository.existsByCleanupJobCleanupJobId(cleanupJob.getCleanupJobId())) return;
 		long reclaimedBytes = items.stream()
 			.filter(item -> item.getProcessStatus() == ProcessStatus.SUCCESS)
@@ -187,6 +193,7 @@ public class CleanupJobExecutionService {
 			successItemCount,
 			reclaimedBytes,
 			null,
+			totalDriveBytes,
 			completedAt
 		));
 		BigDecimal estimatedCarbonGrams = calculateCarbonGrams(reclaimedBytes);
