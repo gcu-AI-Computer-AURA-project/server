@@ -331,6 +331,7 @@ CREATE TABLE IF NOT EXISTS cleanup_histories (
 	cleaned_item_count INT UNSIGNED NOT NULL DEFAULT 0,
 	reclaimed_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
 	remaining_drive_bytes BIGINT UNSIGNED NULL,
+	total_drive_bytes BIGINT UNSIGNED NULL,
 	completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (history_id),
 	UNIQUE KEY uk_cleanup_histories_cleanup_job (cleanup_job_id),

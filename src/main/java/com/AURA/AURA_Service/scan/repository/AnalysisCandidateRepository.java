@@ -33,6 +33,7 @@ public interface AnalysisCandidateRepository extends JpaRepository<AnalysisCandi
 			coalesce(sum(case when candidate.selectionStatus = :selectedStatus then 1 else 0 end), 0) as selectedCount
 		from AnalysisCandidate candidate
 		where candidate.scanJob.scanJobId = :scanJobId
+			and candidate.isProtected = false
 		group by candidate.category
 		order by candidate.category
 		""")

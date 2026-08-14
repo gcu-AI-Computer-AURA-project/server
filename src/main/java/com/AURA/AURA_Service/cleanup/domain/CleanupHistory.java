@@ -29,12 +29,14 @@ public class CleanupHistory {
 	@Column(name = "cleaned_item_count", nullable = false) private Integer cleanedItemCount;
 	@Column(name = "reclaimed_bytes", nullable = false) private Long reclaimedBytes;
 	@Column(name = "remaining_drive_bytes") private Long remainingDriveBytes;
+	@Column(name = "total_drive_bytes")
+	private Long totalDriveBytes;
 	@Column(name = "completed_at", nullable = false) private LocalDateTime completedAt;
 
 	protected CleanupHistory() { }
 
 	public static CleanupHistory create(User user, CleanupJob cleanupJob, ScanJob scanJob, ActionType actionType,
-		int cleanedItemCount, long reclaimedBytes, Long remainingDriveBytes, LocalDateTime completedAt) {
+		int cleanedItemCount, long reclaimedBytes, Long remainingDriveBytes, Long totalDriveBytes, LocalDateTime completedAt) {
 		CleanupHistory cleanupHistory = new CleanupHistory();
 		cleanupHistory.user = user;
 		cleanupHistory.cleanupJob = cleanupJob;
@@ -43,6 +45,7 @@ public class CleanupHistory {
 		cleanupHistory.cleanedItemCount = cleanedItemCount;
 		cleanupHistory.reclaimedBytes = reclaimedBytes;
 		cleanupHistory.remainingDriveBytes = remainingDriveBytes;
+		cleanupHistory.totalDriveBytes = totalDriveBytes;
 		cleanupHistory.completedAt = completedAt;
 		return cleanupHistory;
 	}
@@ -52,5 +55,6 @@ public class CleanupHistory {
 	public Integer getCleanedItemCount() { return cleanedItemCount; }
 	public Long getReclaimedBytes() { return reclaimedBytes; }
 	public Long getRemainingDriveBytes() { return remainingDriveBytes; }
+	public Long getTotalDriveBytes() { return totalDriveBytes; }
 	public LocalDateTime getCompletedAt() { return completedAt; }
 }
