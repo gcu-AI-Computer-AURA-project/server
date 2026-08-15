@@ -59,6 +59,7 @@ public class GoogleMetadataCollector {
 	private static final String GMAIL_LIST_FIELDS = "nextPageToken,messages(id,threadId)";
 	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers,parts(filename,mimeType,body/size,parts(filename,mimeType,body/size)))";
 	private static final String DRIVE_FILE_FIELDS = "nextPageToken,files(id,name,parents,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,md5Checksum,owners(emailAddress),trashed,trashedTime)";
+	private static final String MY_DRIVE_OWNER_QUERY = "'me' in owners";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 	private static final int PAGE_SIZE = 100;
 	private static final int DEFAULT_GOOGLE_API_TIMEOUT_SECONDS = 60;
@@ -186,7 +187,7 @@ public class GoogleMetadataCollector {
 		do {
 			String currentPageToken = pageToken;
 			FileList fileList = executeWithRetry(() -> drive.files().list()
-				.setQ("mimeType != '" + FOLDER_MIME_TYPE + "' and trashed = false")
+				.setQ("mimeType != '" + FOLDER_MIME_TYPE + "' and trashed = false and " + MY_DRIVE_OWNER_QUERY)
 				.setFields(DRIVE_FILE_FIELDS)
 				.setPageSize(pageSize(items, driveMaxFiles))
 				.setPageToken(currentPageToken)
@@ -367,7 +368,7 @@ public class GoogleMetadataCollector {
 	}
 
 	private String createFolderChildrenQuery(String folderId, boolean includeSubfolders) {
-		String query = "'" + escapeQueryValue(folderId) + "' in parents and trashed = false";
+		String query = "'" + escapeQueryValue(folderId) + "' in parents and trashed = false and " + MY_DRIVE_OWNER_QUERY;
 		if (!includeSubfolders) query += " and mimeType != '" + FOLDER_MIME_TYPE + "'";
 		return query;
 	}
