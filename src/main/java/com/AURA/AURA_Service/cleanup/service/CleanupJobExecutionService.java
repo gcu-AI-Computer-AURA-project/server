@@ -25,8 +25,8 @@ import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
-import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.About;
+import com.google.api.services.drive.model.File;
 import com.google.api.services.gmail.Gmail;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
@@ -41,6 +41,8 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CleanupJobExecutionService {
+	private static final Logger log = LoggerFactory.getLogger(CleanupJobExecutionService.class);
 	private static final String APPLICATION_NAME = "AURA_Service";
 	private static final String GOOGLE_USER_ID = "me";
 	private static final String CARBON_FORMULA_VERSION = "v1";
@@ -92,32 +95,29 @@ public class CleanupJobExecutionService {
 
 		cleanupJob.start();
 		GoogleToken googleToken;
-		Long totalDriveBytes = null;
+		DriveStorageQuotaSnapshot driveStorageQuotaSnapshot = DriveStorageQuotaSnapshot.empty();
 		try {
 			googleToken = refreshGoogleAccessToken(cleanupJob.getUser());
 		} catch (RuntimeException exception) {
 			LocalDateTime processedAt = LocalDateTime.now();
 			pendingItems.forEach(item -> item.markFailed(exception.getMessage(), processedAt));
-			completeJob(cleanupJob, null);
+			completeJob(cleanupJob, driveStorageQuotaSnapshot);
 			return;
 		}
 		try {
 			Gmail gmail = createGmail(googleToken.accessToken());
 			Drive drive = createDrive(googleToken.accessToken());
-			try {
-				About about = drive.about().get().setFields("storageQuota").execute();
-				totalDriveBytes = about.getStorageQuota().getLimit();
-			} catch (Exception ignored) { }
 			for (CleanupJobItem item : pendingItems) {
 				processItem(cleanupJob.getActionType(), item, gmail, drive);
 			}
+			driveStorageQuotaSnapshot = fetchDriveStorageQuota(drive, cleanupJob.getCleanupJobId());
 		} catch (RuntimeException exception) {
 			LocalDateTime processedAt = LocalDateTime.now();
 			pendingItems.stream()
 				.filter(item -> item.getProcessStatus() == ProcessStatus.PENDING)
 				.forEach(item -> item.markFailed(exception.getMessage(), processedAt));
 		}
-		completeJob(cleanupJob, totalDriveBytes);
+		completeJob(cleanupJob, driveStorageQuotaSnapshot);
 	}
 
 	private void processItem(ActionType actionType, CleanupJobItem item, Gmail gmail, Drive drive) {
@@ -162,7 +162,27 @@ public class CleanupJobExecutionService {
 			.execute();
 	}
 
-	private void completeJob(CleanupJob cleanupJob, Long totalDriveBytes) {
+	private DriveStorageQuotaSnapshot fetchDriveStorageQuota(Drive drive, Long cleanupJobId) {
+		try {
+			About about = drive.about().get()
+				.setFields("storageQuota(limit,usage)")
+				.execute();
+			if (about == null || about.getStorageQuota() == null) {
+				return DriveStorageQuotaSnapshot.empty();
+			}
+			Long totalDriveBytes = about.getStorageQuota().getLimit();
+			Long usageBytes = about.getStorageQuota().getUsage();
+			Long remainingDriveBytes = totalDriveBytes != null && usageBytes != null
+				? Math.max(totalDriveBytes - usageBytes, 0L)
+				: null;
+			return new DriveStorageQuotaSnapshot(remainingDriveBytes, totalDriveBytes);
+		} catch (Exception exception) {
+			log.warn("Drive storage quota lookup failed. cleanupJobId={}", cleanupJobId, exception);
+			return DriveStorageQuotaSnapshot.empty();
+		}
+	}
+
+	private void completeJob(CleanupJob cleanupJob, DriveStorageQuotaSnapshot driveStorageQuotaSnapshot) {
 		List<CleanupJobItem> items = cleanupJobItemRepository
 			.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJob.getCleanupJobId());
 		int successItemCount = countByStatus(items, ProcessStatus.SUCCESS);
@@ -170,12 +190,12 @@ public class CleanupJobExecutionService {
 		LocalDateTime completedAt = LocalDateTime.now();
 		cleanupJob.complete(successItemCount, failedItemCount, completedAt);
 		if (failedItemCount == 0 && successItemCount > 0 && cleanupJob.getActionType() != ActionType.RESTORE_FROM_TRASH) {
-			createCompletionHistory(cleanupJob, items, successItemCount, completedAt, totalDriveBytes);
+			createCompletionHistory(cleanupJob, items, successItemCount, completedAt, driveStorageQuotaSnapshot);
 		}
 	}
 
 	private void createCompletionHistory(CleanupJob cleanupJob, List<CleanupJobItem> items, int successItemCount,
-		LocalDateTime completedAt, Long totalDriveBytes) {
+		LocalDateTime completedAt, DriveStorageQuotaSnapshot driveStorageQuotaSnapshot) {
 		if (cleanupHistoryRepository.existsByCleanupJobCleanupJobId(cleanupJob.getCleanupJobId())) return;
 		long reclaimedBytes = items.stream()
 			.filter(item -> item.getProcessStatus() == ProcessStatus.SUCCESS)
@@ -188,8 +208,8 @@ public class CleanupJobExecutionService {
 			cleanupJob.getActionType(),
 			successItemCount,
 			reclaimedBytes,
-			null,
-			totalDriveBytes,
+			driveStorageQuotaSnapshot.remainingDriveBytes(),
+			driveStorageQuotaSnapshot.totalDriveBytes(),
 			completedAt
 		));
 		BigDecimal estimatedCarbonGrams = calculateCarbonGrams(reclaimedBytes);
@@ -290,6 +310,12 @@ public class CleanupJobExecutionService {
 			);
 		} catch (DataAccessException exception) {
 			return;
+		}
+	}
+
+	private record DriveStorageQuotaSnapshot(Long remainingDriveBytes, Long totalDriveBytes) {
+		private static DriveStorageQuotaSnapshot empty() {
+			return new DriveStorageQuotaSnapshot(null, null);
 		}
 	}
 }

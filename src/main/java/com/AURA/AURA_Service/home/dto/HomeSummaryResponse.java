@@ -24,6 +24,8 @@ public record HomeSummaryResponse(
 		Long estimatedReclaimBytes,
 		@JsonProperty("latest_remaining_drive_bytes")
 		Long latestRemainingDriveBytes,
+		@JsonProperty("total_drive_bytes")
+		Long totalDriveBytes,
 		@JsonProperty("total_reclaimed_bytes")
 		Long totalReclaimedBytes,
 		@JsonProperty("total_estimated_carbon_grams")
