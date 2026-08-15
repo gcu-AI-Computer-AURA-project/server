@@ -57,6 +57,8 @@ public class CleanupJobExecutionService {
 	private static final BigDecimal GIB_BYTES = new BigDecimal("1073741824");
 	private static final BigDecimal CARBON_GRAMS_PER_GIB = new BigDecimal("1.5600");
 	private static final DateTimeFormatter YEAR_MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
+	private static final long DRIVE_QUOTA_SCALE_CORRECTION_THRESHOLD_BYTES = 100L * 1024 * 1024 * 1024 * 1024;
+	private static final long DRIVE_QUOTA_SCALE_CORRECTION_FACTOR = 100_000L;
 
 	private final CleanupJobRepository cleanupJobRepository;
 	private final CleanupJobItemRepository cleanupJobItemRepository;
@@ -170,8 +172,8 @@ public class CleanupJobExecutionService {
 			if (about == null || about.getStorageQuota() == null) {
 				return DriveStorageQuotaSnapshot.empty();
 			}
-			Long totalDriveBytes = about.getStorageQuota().getLimit();
-			Long usageBytes = about.getStorageQuota().getUsage();
+			Long totalDriveBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getLimit());
+			Long usageBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getUsage());
 			Long remainingDriveBytes = totalDriveBytes != null && usageBytes != null
 				? Math.max(totalDriveBytes - usageBytes, 0L)
 				: null;
@@ -279,6 +281,18 @@ public class CleanupJobExecutionService {
 		return BigDecimal.valueOf(reclaimedBytes)
 			.multiply(CARBON_GRAMS_PER_GIB)
 			.divide(GIB_BYTES, 4, RoundingMode.HALF_UP);
+	}
+
+	private Long normalizeDriveQuotaBytes(Long bytes) {
+		if (bytes == null || bytes <= DRIVE_QUOTA_SCALE_CORRECTION_THRESHOLD_BYTES) {
+			return bytes;
+		}
+		long normalizedBytes = Math.round(bytes / (double)DRIVE_QUOTA_SCALE_CORRECTION_FACTOR);
+		if (normalizedBytes <= 0 || normalizedBytes > DRIVE_QUOTA_SCALE_CORRECTION_THRESHOLD_BYTES) {
+			return bytes;
+		}
+		log.warn("Drive quota value normalized. rawBytes={}, normalizedBytes={}", bytes, normalizedBytes);
+		return normalizedBytes;
 	}
 
 	private void upsertMonthlyStatistic(CleanupJob cleanupJob, int successItemCount, long reclaimedBytes,

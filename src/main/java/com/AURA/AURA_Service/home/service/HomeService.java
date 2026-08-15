@@ -53,6 +53,8 @@ public class HomeService {
 	private static final String APPLICATION_NAME = "AURA_Service";
 	private static final List<JobStatus> RUNNING_STATUSES = List.of(JobStatus.PENDING, JobStatus.SCANNING, JobStatus.ANALYZING);
 	private static final BigDecimal ZERO_CARBON_GRAMS = new BigDecimal("0.0000");
+	private static final long DRIVE_QUOTA_SCALE_CORRECTION_THRESHOLD_BYTES = 100L * 1024 * 1024 * 1024 * 1024;
+	private static final long DRIVE_QUOTA_SCALE_CORRECTION_FACTOR = 100_000L;
 
 	private final UserRepository userRepository;
 	private final GooglePermissionRepository googlePermissionRepository;
@@ -133,8 +135,8 @@ public class HomeService {
 				order by completed_at desc
 				limit 1
 				""", (rs, rowNum) -> new DriveStorageSnapshot(
-					rs.getObject("remaining_drive_bytes", Long.class),
-					rs.getObject("total_drive_bytes", Long.class)
+					normalizeDriveQuotaBytes(rs.getObject("remaining_drive_bytes", Long.class)),
+					normalizeDriveQuotaBytes(rs.getObject("total_drive_bytes", Long.class))
 				), userId).stream()
 				.findFirst()
 				.orElse(DriveStorageSnapshot.empty());
@@ -205,8 +207,8 @@ public class HomeService {
 			if (about.getStorageQuota() == null) {
 				return DriveStorageSnapshot.empty();
 			}
-			Long totalDriveBytes = about.getStorageQuota().getLimit();
-			Long usageBytes = about.getStorageQuota().getUsage();
+			Long totalDriveBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getLimit());
+			Long usageBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getUsage());
 			Long remainingDriveBytes = totalDriveBytes == null || usageBytes == null
 				? null
 				: Math.max(totalDriveBytes - usageBytes, 0L);
@@ -241,6 +243,18 @@ public class HomeService {
 
 	private Long defaultZero(Long value) {
 		return value == null ? 0L : value;
+	}
+
+	private Long normalizeDriveQuotaBytes(Long bytes) {
+		if (bytes == null || bytes <= DRIVE_QUOTA_SCALE_CORRECTION_THRESHOLD_BYTES) {
+			return bytes;
+		}
+		long normalizedBytes = Math.round(bytes / (double)DRIVE_QUOTA_SCALE_CORRECTION_FACTOR);
+		if (normalizedBytes <= 0 || normalizedBytes > DRIVE_QUOTA_SCALE_CORRECTION_THRESHOLD_BYTES) {
+			return bytes;
+		}
+		LOGGER.warn("Drive quota value normalized. rawBytes={}, normalizedBytes={}", bytes, normalizedBytes);
+		return normalizedBytes;
 	}
 
 	private BigDecimal defaultCarbon(BigDecimal value) {
