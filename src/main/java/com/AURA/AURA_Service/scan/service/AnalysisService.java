@@ -58,8 +58,9 @@ public class AnalysisService {
 		findUserScanJob(userId, scanJobId);
 		Pageable pageable = createPageable(page, size);
 		String resolvedSort = resolveSort(sort);
+		boolean resolvedIncludeProtected = includeProtected || category == CandidateCategory.PROTECTED;
 		return AnalysisCandidatePageResponse.from(analysisCandidateRepository.findCandidates(scanJobId, category,
-			itemSource, selectionStatus, includeProtected, resolvedSort, pageable));
+			itemSource, selectionStatus, resolvedIncludeProtected, resolvedSort, pageable));
 	}
 
 	@Transactional(readOnly = true)

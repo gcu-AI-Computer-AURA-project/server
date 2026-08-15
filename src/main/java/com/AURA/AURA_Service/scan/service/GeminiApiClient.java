@@ -211,6 +211,8 @@ public class GeminiApiClient {
 			Do not classify an item as PROTECTED only because it is uncertain.
 			Do not classify an item as PROTECTED only because it does not match include_keywords.
 			Use protected_hint true only when the item directly or semantically matches exclude_keywords.
+			If any direct or semantic exclude_keywords match exists, suggested_category must be PROTECTED, cleanup_hint must be false, and exclude_keyword_matches must include the original exclude keyword.
+			When exclude_keywords contains Korean class/course terms such as \uC218\uC5C5, \uAC15\uC758, or \uAC15\uC88C, treat visible metadata containing \uCF54\uB529\uD14C\uC2A4\uD2B8, \uB179\uD654\uBCF8, lecture, class, course, lesson, or recorded lesson as a SEMANTIC exclude match.
 			If exclude_keywords is empty or unrelated to the item, protected_hint must be false.
 			Old items and duplicate-like items are cleanup candidates by default unless they match exclude_keywords or explicit metadata protection rules.
 			If an item is uncertain, choose OLD_MAIL for GMAIL or OLD_DRIVE_FILE for DRIVE, set cleanup_hint false, protected_hint false, confidence_score between 0 and 30, and still provide semantic_tags.

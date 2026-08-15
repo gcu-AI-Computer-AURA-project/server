@@ -29,6 +29,17 @@ public class AnalysisDecisionEngine {
 	private static final String PERIOD_CONDITION_RULE = "period_condition";
 	private static final String GENERAL_CLEANUP_RULE = "general_cleanup_rule";
 	private static final Pattern COPY_SUFFIX_PATTERN = Pattern.compile("\\s*(\\(\\d+\\)|\\[\\d+\\]|-\\s*copy|copy\\s*\\d*)$", Pattern.CASE_INSENSITIVE);
+	private static final Map<String, List<String>> EXCLUDE_KEYWORD_ALIASES = Map.of(
+		"\uC218\uC5C5", List.of("\uAC15\uC758", "\uAC15\uC88C", "\uAD50\uC721", "\uD559\uC2B5",
+			"\uB179\uD654\uBCF8", "\uC628\uB77C\uC778\uAC15\uC758", "\uCF54\uB529\uD14C\uC2A4\uD2B8",
+			"lecture", "class", "course", "lesson"),
+		"\uAC15\uC758", List.of("\uC218\uC5C5", "\uAC15\uC88C", "\uAD50\uC721", "\uD559\uC2B5",
+			"\uB179\uD654\uBCF8", "\uC628\uB77C\uC778\uAC15\uC758", "\uCF54\uB529\uD14C\uC2A4\uD2B8",
+			"lecture", "class", "course", "lesson"),
+		"\uAC15\uC88C", List.of("\uC218\uC5C5", "\uAC15\uC758", "\uAD50\uC721", "\uD559\uC2B5",
+			"\uB179\uD654\uBCF8", "\uC628\uB77C\uC778\uAC15\uC758", "\uCF54\uB529\uD14C\uC2A4\uD2B8",
+			"lecture", "class", "course", "lesson")
+	);
 
 	public List<CandidateDecision> decide(List<ScannedItem> items, ScanCondition condition, GeminiAnalysisBundle bundle,
 		String userEmail) {
@@ -36,8 +47,8 @@ public class AnalysisDecisionEngine {
 		List<CandidateDecision> decisions = new ArrayList<>();
 		for (ScannedItem item : items) {
 			GeminiAnalysisResult signal = bundle.resultFor(item);
-			List<String> directExcludeMatches = directKeywordMatches(condition.getExcludeKeywords(), item);
-			List<String> directIncludeMatches = directKeywordMatches(condition.getIncludeKeywords(), item);
+			List<String> directExcludeMatches = directKeywordMatches(condition.getExcludeKeywords(), item, true);
+			List<String> directIncludeMatches = directKeywordMatches(condition.getIncludeKeywords(), item, false);
 			List<String> semanticExcludeMatches = semanticKeywordMatches(signal.excludeKeywordMatches());
 			List<String> semanticIncludeMatches = semanticKeywordMatches(signal.includeKeywordMatches());
 
@@ -265,14 +276,23 @@ public class AnalysisDecisionEngine {
 		return new ProtectionSignal(false, null);
 	}
 
-	private List<String> directKeywordMatches(List<String> keywords, ScannedItem item) {
+	private List<String> directKeywordMatches(List<String> keywords, ScannedItem item, boolean includeAliases) {
 		if (keywords == null || keywords.isEmpty()) return List.of();
 		String searchText = item.toSearchText().toLowerCase(Locale.ROOT);
 		return keywords.stream()
 			.filter(keyword -> !isBlank(keyword))
-			.filter(keyword -> searchText.contains(keyword.toLowerCase(Locale.ROOT)))
+			.filter(keyword -> matchesKeyword(searchText, keyword, includeAliases))
 			.distinct()
 			.toList();
+	}
+
+	private boolean matchesKeyword(String searchText, String keyword, boolean includeAliases) {
+		String normalizedKeyword = keyword.toLowerCase(Locale.ROOT);
+		if (searchText.contains(normalizedKeyword)) return true;
+		if (!includeAliases) return false;
+		return EXCLUDE_KEYWORD_ALIASES.getOrDefault(normalizedKeyword, List.of()).stream()
+			.map(alias -> alias.toLowerCase(Locale.ROOT))
+			.anyMatch(searchText::contains);
 	}
 
 	private List<String> semanticKeywordMatches(List<GeminiAnalysisResult.KeywordMatch> matches) {
