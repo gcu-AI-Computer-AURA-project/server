@@ -120,6 +120,24 @@ class AnalysisDecisionEngineTest {
 	}
 
 	@Test
+	void classExcludeKeywordProtectsCodingTestRecordingWithoutGeminiMatch() {
+		ScannedItem codingTestFile = driveVideoItem("drive-class-1",
+			"\uCF54\uB529\uD14C\uC2A4\uD2B83-2.mp4");
+		ScannedItem recordingFile = driveVideoItem("drive-class-2",
+			"\uCF54\uB529\uD14C\uC2A4\uD2B8 09.10 \uB179\uD654\uBCF8.mp4");
+
+		List<CandidateDecision> decisions = analysisDecisionEngine.decide(List.of(codingTestFile, recordingFile),
+			classExcludeCondition(), GeminiAnalysisBundle.ruleBased(), "user@example.com");
+
+		assertEquals(2, decisions.size());
+		for (CandidateDecision decision : decisions) {
+			assertEquals(CandidateCategory.PROTECTED, decision.category());
+			assertEquals(true, decision.isProtected());
+			assertEquals(SelectionStatus.NONE, decision.selectionStatus());
+		}
+	}
+
+	@Test
 	void fuzzyDuplicateIsShownAsCandidateButNotSelectedByDefault() {
 		ScannedItem original = driveItem("drive-2", "AURA 발표 최종.pptx");
 		ScannedItem copy = driveItem("drive-3", "AURA 발표 최종(1).pptx");
@@ -213,6 +231,15 @@ class AnalysisDecisionEngineTest {
 		));
 	}
 
+	private ScanCondition classExcludeCondition() {
+		return ScanCondition.fromSnapshot(Map.of(
+			"scan_source", ScanSource.MAIL_AND_DRIVE.name(),
+			"exclude_keywords", List.of("\uC218\uC5C5"),
+			"last_modified_before_months", 6,
+			"apply_recent_conditions", true
+		));
+	}
+
 	private ScannedItem gmailItem(String externalItemId, String title, String labelText, long attachmentSizeBytes) {
 		return ScannedItem.create(null, null, ItemSource.GMAIL, externalItemId, null, null, title,
 			"noreply@example.com", labelText, "오늘만 제공되는 특가 안내", "message/rfc822", null, 0L,
@@ -244,6 +271,13 @@ class AnalysisDecisionEngineTest {
 			"pptx", sizeBytes, 0L, null, LocalDateTime.now().minusYears(1),
 			LocalDateTime.now().minusMonths(6), LocalDateTime.now().minusMonths(6), false, false, false,
 			false, null, "user@example.com", false, null, Map.of());
+	}
+
+	private ScannedItem driveVideoItem(String externalItemId, String title) {
+		return ScannedItem.create(null, null, ItemSource.DRIVE, externalItemId, null, "\uC218\uC5C5/\uB179\uD654",
+			title, null, null, null, "video/mp4", "mp4", 900L * 1024L * 1024L, 0L, null,
+			LocalDateTime.now().minusYears(2), LocalDateTime.now().minusYears(1), LocalDateTime.now().minusYears(1),
+			false, false, false, false, null, "user@example.com", false, null, Map.of());
 	}
 
 	private GeminiAnalysisResult signal(ScannedItem item, CandidateCategory category, boolean cleanupHint,
