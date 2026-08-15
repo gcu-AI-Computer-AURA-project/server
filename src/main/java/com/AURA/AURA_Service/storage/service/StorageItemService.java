@@ -67,10 +67,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class StorageItemService {
 	private static final String APPLICATION_NAME = "AURA_Service";
 	private static final String GOOGLE_USER_ID = "me";
+	private static final String DRIVE_ROOT_FOLDER_ID = "root";
 	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 	private static final String GMAIL_LIST_FIELDS = "nextPageToken,resultSizeEstimate,messages(id,threadId)";
 	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers)";
-	private static final String DRIVE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,owners(emailAddress),trashed,trashedTime,parents";
+	private static final String DRIVE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,owners(emailAddress),trashed,trashedTime,parents,driveId";
 	private static final String DRIVE_LIST_FIELDS = "nextPageToken,files(" + DRIVE_FILE_FIELDS + ")";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 	private static final int DEFAULT_PAGE = 0;
@@ -106,13 +107,14 @@ public class StorageItemService {
 
 	@Transactional
 	public StorageItemPageResponse getItems(Long userId, ItemSource itemSource, Boolean trashed, String sort,
-		Integer page, Integer size) {
+		Integer page, Integer size, String parentId) {
 		GoogleToken googleToken = refreshGoogleAccessToken(userId, itemSource);
 		int normalizedPage = normalizePage(page);
 		int normalizedSize = normalizeSize(size);
 		return switch (itemSource) {
 			case GMAIL -> getLiveGmailItems(userId, googleToken.accessToken(), trashed, normalizedPage, normalizedSize);
-			case DRIVE -> getLiveDriveItems(userId, googleToken.accessToken(), trashed, sort, normalizedPage, normalizedSize);
+			case DRIVE -> getLiveDriveItems(userId, googleToken.accessToken(), trashed, sort, normalizedPage, normalizedSize,
+				parentId);
 		};
 	}
 
@@ -289,11 +291,11 @@ public class StorageItemService {
 	}
 
 	private StorageItemPageResponse getLiveDriveItems(Long userId, String accessToken, Boolean trashed, String sort,
-		int page, int size) {
+		int page, int size, String parentId) {
 		try {
-			FileList fileList = getDriveFilePage(createDrive(accessToken), createDriveStorageQuery(trashed),
+			FileList fileList = getDriveFilePage(createDrive(accessToken), createDriveStorageQuery(trashed, parentId),
 				createDriveOrderBy(sort), page, size);
-			List<File> files = fileList.getFiles() == null ? List.of() : fileList.getFiles();
+			List<File> files = filterMyDriveFiles(fileList.getFiles());
 			Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.DRIVE,
 				files.stream().map(File::getId).toList());
 			List<StorageItemListItemResponse> content = files.stream()
@@ -314,7 +316,8 @@ public class StorageItemService {
 	}
 
 	private StorageTrashPageResponse getLiveDriveTrashItems(Long userId, String accessToken, int page, int size) {
-		StorageItemPageResponse response = getLiveDriveItems(userId, accessToken, true, "modified_desc", page, size);
+		StorageItemPageResponse response = getLiveDriveItems(userId, accessToken, true, "modified_desc", page, size,
+			null);
 		List<StorageTrashItemResponse> content = response.content().stream()
 			.map(StorageTrashItemResponse::live)
 			.toList();
@@ -375,14 +378,16 @@ public class StorageItemService {
 			String pageToken = null;
 			do {
 				FileList fileList = drive.files().list()
-					.setQ(createDriveStorageQuery(true))
+					.setQ(createDriveStorageQuery(true, null))
 					.setFields(DRIVE_LIST_FIELDS)
 					.setPageSize(EMPTY_TRASH_GOOGLE_PAGE_SIZE)
 					.setPageToken(pageToken)
 					.setOrderBy("modifiedTime desc")
 					.setCorpora("user")
+					.setIncludeItemsFromAllDrives(false)
+					.setSupportsAllDrives(false)
 					.execute();
-				List<File> files = fileList.getFiles() == null ? List.of() : fileList.getFiles();
+				List<File> files = filterMyDriveFiles(fileList.getFiles());
 				Map<String, Long> snapshotItemIds = findSnapshotItemIds(userId, ItemSource.DRIVE,
 					files.stream().map(File::getId).toList());
 				content.addAll(files.stream()
@@ -426,6 +431,8 @@ public class StorageItemService {
 				.setPageToken(pageToken)
 				.setOrderBy(orderBy)
 				.setCorpora("user")
+				.setIncludeItemsFromAllDrives(false)
+				.setSupportsAllDrives(false)
 				.execute();
 			pageToken = fileList.getNextPageToken();
 			if (pageToken == null && index < page) return new FileList().setFiles(List.of());
@@ -486,9 +493,32 @@ public class StorageItemService {
 		return Boolean.TRUE.equals(trashed) ? "in:trash" : "-in:trash";
 	}
 
-	private String createDriveStorageQuery(Boolean trashed) {
-		if (trashed == null) return "trashed = false";
-		return "trashed = " + Boolean.TRUE.equals(trashed);
+	private String createDriveStorageQuery(Boolean trashed, String parentId) {
+		boolean isTrashed = Boolean.TRUE.equals(trashed);
+		StringBuilder query = new StringBuilder("trashed = ").append(isTrashed);
+		String normalizedParentId = normalizeDriveParentId(parentId);
+		if (!isTrashed || normalizedParentId != null) {
+			query.append(" and '")
+				.append(escapeDriveQueryValue(normalizedParentId == null ? DRIVE_ROOT_FOLDER_ID : normalizedParentId))
+				.append("' in parents");
+		}
+		return query.toString();
+	}
+
+	private List<File> filterMyDriveFiles(List<File> files) {
+		if (files == null) return List.of();
+		return files.stream()
+			.filter(file -> file.getDriveId() == null)
+			.toList();
+	}
+
+	private String normalizeDriveParentId(String parentId) {
+		if (parentId == null || parentId.isBlank()) return null;
+		return parentId.trim();
+	}
+
+	private String escapeDriveQueryValue(String value) {
+		return value.replace("\\", "\\\\").replace("'", "\\'");
 	}
 
 	private boolean isDriveFolder(File file) {
@@ -807,7 +837,11 @@ public class StorageItemService {
 		try {
 			File file = createDrive(accessToken).files().get(externalItemId)
 				.setFields(DRIVE_FILE_FIELDS)
+				.setSupportsAllDrives(false)
 				.execute();
+			if (file.getDriveId() != null) {
+				throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED);
+			}
 			return new StorageItemLiveDetailResponse(
 				null,
 				ItemSource.DRIVE,

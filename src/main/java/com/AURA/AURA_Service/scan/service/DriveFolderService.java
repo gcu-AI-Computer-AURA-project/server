@@ -35,8 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DriveFolderService {
 	private static final String APPLICATION_NAME = "AURA_Service";
+	private static final String DRIVE_ROOT_FOLDER_ID = "root";
 	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
-	private static final String FOLDER_FIELDS = "nextPageToken, files(id, name, parents, modifiedTime)";
+	private static final String FOLDER_FIELDS = "nextPageToken, files(id, name, parents, modifiedTime, driveId)";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 
 	private final UserRepository userRepository;
@@ -71,6 +72,8 @@ public class DriveFolderService {
 				.setPageSize(size)
 				.setOrderBy("folder,name")
 				.setCorpora("user")
+				.setIncludeItemsFromAllDrives(false)
+				.setSupportsAllDrives(false)
 				.execute();
 			return new DriveFolderResponse(toFolderItems(fileList.getFiles()), fileList.getNextPageToken());
 		} catch (IOException exception) {
@@ -98,14 +101,19 @@ public class DriveFolderService {
 
 	private String createFolderQuery(String parentId) {
 		String normalizedParentId = normalize(parentId);
-		StringBuilder query = new StringBuilder("mimeType = '").append(FOLDER_MIME_TYPE).append("' and trashed = false");
-		if (normalizedParentId != null) query.append(" and '").append(escapeQueryValue(normalizedParentId)).append("' in parents");
-		return query.toString();
+		String targetParentId = normalizedParentId == null ? DRIVE_ROOT_FOLDER_ID : normalizedParentId;
+		return new StringBuilder("mimeType = '")
+			.append(FOLDER_MIME_TYPE)
+			.append("' and trashed = false and '")
+			.append(escapeQueryValue(targetParentId))
+			.append("' in parents")
+			.toString();
 	}
 
 	private List<DriveFolderItem> toFolderItems(List<File> files) {
 		if (files == null) return List.of();
 		return files.stream()
+			.filter(file -> file.getDriveId() == null)
 			.map(file -> new DriveFolderItem(file.getId(), file.getName(), extractParentId(file), toLocalDateTime(file.getModifiedTime())))
 			.toList();
 	}

@@ -36,9 +36,10 @@ public class StorageItemController {
 		@RequestParam(value = "trashed", required = false) Boolean trashed,
 		@RequestParam(value = "sort", required = false) String sort,
 		@RequestParam(value = "page", required = false) Integer page,
-		@RequestParam(value = "size", required = false) Integer size) {
+		@RequestParam(value = "size", required = false) Integer size,
+		@RequestParam(value = "parent_id", required = false) String parentId) {
 		return ResponseEntity.ok(ApiResponse.success(storageItemService.getItems(Long.valueOf(userId),
-			itemSource, trashed, sort, page, size)));
+			itemSource, trashed, sort, page, size, parentId)));
 	}
 
 	@Operation(summary = "저장소 항목 상세 조회", description = "현재 로그인한 사용자의 스캔 저장소 항목 상세 정보를 조회합니다.")
