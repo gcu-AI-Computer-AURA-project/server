@@ -167,13 +167,18 @@ public class CleanupJobExecutionService {
 	private DriveStorageQuotaSnapshot fetchDriveStorageQuota(Drive drive, Long cleanupJobId) {
 		try {
 			About about = drive.about().get()
-				.setFields("storageQuota(limit,usage)")
+				.setFields("storageQuota(limit,usage,usageInDrive,usageInDriveTrash)")
 				.execute();
 			if (about == null || about.getStorageQuota() == null) {
 				return DriveStorageQuotaSnapshot.empty();
 			}
 			Long totalDriveBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getLimit());
-			Long usageBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getUsage());
+			Long usageBytes = selectDriveUsageBytes(
+				totalDriveBytes,
+				about.getStorageQuota().getUsage(),
+				about.getStorageQuota().getUsageInDrive(),
+				about.getStorageQuota().getUsageInDriveTrash()
+			);
 			Long remainingDriveBytes = totalDriveBytes != null && usageBytes != null
 				? Math.max(totalDriveBytes - usageBytes, 0L)
 				: null;
@@ -182,6 +187,24 @@ public class CleanupJobExecutionService {
 			log.warn("Drive storage quota lookup failed. cleanupJobId={}", cleanupJobId, exception);
 			return DriveStorageQuotaSnapshot.empty();
 		}
+	}
+
+	private Long selectDriveUsageBytes(Long totalDriveBytes, Long usageBytes, Long usageInDriveBytes, Long usageInDriveTrashBytes) {
+		Long normalizedUsageBytes = normalizeDriveQuotaBytes(usageBytes);
+		if (isValidUsageBytes(totalDriveBytes, normalizedUsageBytes)) {
+			return normalizedUsageBytes;
+		}
+		Long driveOnlyUsageBytes = normalizeDriveQuotaBytes(usageInDriveBytes);
+		if (isValidUsageBytes(totalDriveBytes, driveOnlyUsageBytes)) {
+			log.warn("Drive quota usage fallback applied. totalDriveBytes={}, usageBytes={}, driveOnlyUsageBytes={}",
+				totalDriveBytes, normalizedUsageBytes, driveOnlyUsageBytes);
+			return driveOnlyUsageBytes;
+		}
+		return normalizedUsageBytes;
+	}
+
+	private boolean isValidUsageBytes(Long totalDriveBytes, Long usageBytes) {
+		return totalDriveBytes == null || usageBytes == null || usageBytes <= totalDriveBytes;
 	}
 
 	private void completeJob(CleanupJob cleanupJob, DriveStorageQuotaSnapshot driveStorageQuotaSnapshot) {
