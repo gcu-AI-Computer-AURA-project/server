@@ -202,13 +202,18 @@ public class HomeService {
 	private DriveStorageSnapshot fetchDriveStorageSnapshot(String accessToken) {
 		try {
 			About about = createDrive(accessToken).about().get()
-				.setFields("storageQuota(limit,usage)")
+				.setFields("storageQuota(limit,usage,usageInDrive,usageInDriveTrash)")
 				.execute();
 			if (about.getStorageQuota() == null) {
 				return DriveStorageSnapshot.empty();
 			}
 			Long totalDriveBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getLimit());
-			Long usageBytes = normalizeDriveQuotaBytes(about.getStorageQuota().getUsage());
+			Long usageBytes = selectDriveUsageBytes(
+				totalDriveBytes,
+				about.getStorageQuota().getUsage(),
+				about.getStorageQuota().getUsageInDrive(),
+				about.getStorageQuota().getUsageInDriveTrash()
+			);
 			Long remainingDriveBytes = totalDriveBytes == null || usageBytes == null
 				? null
 				: Math.max(totalDriveBytes - usageBytes, 0L);
@@ -243,6 +248,24 @@ public class HomeService {
 
 	private Long defaultZero(Long value) {
 		return value == null ? 0L : value;
+	}
+
+	private Long selectDriveUsageBytes(Long totalDriveBytes, Long usageBytes, Long usageInDriveBytes, Long usageInDriveTrashBytes) {
+		Long normalizedUsageBytes = normalizeDriveQuotaBytes(usageBytes);
+		if (isValidUsageBytes(totalDriveBytes, normalizedUsageBytes)) {
+			return normalizedUsageBytes;
+		}
+		Long driveOnlyUsageBytes = normalizeDriveQuotaBytes(usageInDriveBytes);
+		if (isValidUsageBytes(totalDriveBytes, driveOnlyUsageBytes)) {
+			LOGGER.warn("Drive quota usage fallback applied. totalDriveBytes={}, usageBytes={}, driveOnlyUsageBytes={}",
+				totalDriveBytes, normalizedUsageBytes, driveOnlyUsageBytes);
+			return driveOnlyUsageBytes;
+		}
+		return normalizedUsageBytes;
+	}
+
+	private boolean isValidUsageBytes(Long totalDriveBytes, Long usageBytes) {
+		return totalDriveBytes == null || usageBytes == null || usageBytes <= totalDriveBytes;
 	}
 
 	private Long normalizeDriveQuotaBytes(Long bytes) {
