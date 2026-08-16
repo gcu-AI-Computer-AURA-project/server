@@ -11,9 +11,11 @@ public record StorageItemDetailResponse(
 	@JsonProperty("item_source") ItemSource itemSource,
 	@JsonProperty("external_item_id") String externalItemId,
 	String title,
+	String snippet,
 	@JsonProperty("mime_type") String mimeType,
 	@JsonProperty("file_extension") String fileExtension,
 	@JsonProperty("folder_path") String folderPath,
+	@JsonProperty("web_view_link") String webViewLink,
 	@JsonProperty("size_bytes") Long sizeBytes,
 	@JsonProperty("created_time") LocalDateTime createdTime,
 	@JsonProperty("modified_time") LocalDateTime modifiedTime,
@@ -31,9 +33,11 @@ public record StorageItemDetailResponse(
 			item.getItemSource(),
 			item.getExternalItemId(),
 			item.getTitle(),
+			item.getSnippet(),
 			item.getMimeType(),
 			item.getFileExtension(),
 			item.getFolderPath(),
+			buildDriveWebViewLink(item),
 			item.getSizeBytes(),
 			item.getCreatedTime(),
 			item.getModifiedTime(),
@@ -53,9 +57,11 @@ public record StorageItemDetailResponse(
 			item.getItemSource(),
 			item.getExternalItemId(),
 			liveMetadata.title(),
+			liveMetadata.snippet(),
 			liveMetadata.mimeType(),
 			liveMetadata.fileExtension(),
 			liveMetadata.folderPath(),
+			liveMetadata.webViewLink(),
 			liveMetadata.sizeBytes(),
 			liveMetadata.createdTime(),
 			liveMetadata.modifiedTime(),
@@ -66,5 +72,12 @@ public record StorageItemDetailResponse(
 			liveMetadata.liveMetadataRefreshed(),
 			item.getCreatedAt()
 		);
+	}
+
+	private static String buildDriveWebViewLink(ScannedItem item) {
+		if (item.getItemSource() != ItemSource.DRIVE || item.getExternalItemId() == null || item.getExternalItemId().isBlank()) {
+			return null;
+		}
+		return "https://drive.google.com/open?id=" + item.getExternalItemId();
 	}
 }
