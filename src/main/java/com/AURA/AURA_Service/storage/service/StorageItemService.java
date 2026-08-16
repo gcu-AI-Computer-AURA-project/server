@@ -42,16 +42,19 @@ import com.google.api.services.drive.model.FileList;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
+import com.google.api.services.gmail.model.MessagePart;
 import com.google.api.services.gmail.model.MessagePartHeader;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashSet;
@@ -62,6 +65,7 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 
 @Service
 public class StorageItemService {
@@ -71,6 +75,7 @@ public class StorageItemService {
 	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 	private static final String GMAIL_LIST_FIELDS = "nextPageToken,resultSizeEstimate,messages(id,threadId)";
 	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers)";
+	private static final String GMAIL_DETAIL_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload";
 	private static final String DRIVE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,owners(emailAddress),trashed,trashedTime,parents,driveId,webViewLink";
 	private static final String DRIVE_LIST_FIELDS = "nextPageToken,files(" + DRIVE_FILE_FIELDS + ")";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
@@ -146,6 +151,15 @@ public class StorageItemService {
 			case GMAIL -> getLiveGmailDetail(googleToken.accessToken(), externalItemId.trim());
 			case DRIVE -> getLiveDriveDetail(googleToken.accessToken(), externalItemId.trim());
 		};
+	}
+
+	@Transactional
+	public String getLiveGmailBodyText(Long userId, String externalItemId) {
+		if (externalItemId == null || externalItemId.isBlank()) {
+			return null;
+		}
+		GoogleToken googleToken = refreshGoogleAccessToken(userId, ItemSource.GMAIL);
+		return getLiveGmailBodyText(googleToken.accessToken(), externalItemId.trim());
 	}
 
 	@Transactional
@@ -807,16 +821,14 @@ public class StorageItemService {
 
 	private StorageItemLiveDetailResponse getLiveGmailDetail(String accessToken, String externalItemId) {
 		try {
-			Message message = createGmail(accessToken).users().messages().get(GOOGLE_USER_ID, externalItemId)
-				.setFormat("metadata")
-				.setMetadataHeaders(List.of("Subject", "From"))
-				.execute();
+			Message message = getFullGmailMessage(accessToken, externalItemId);
 			return new StorageItemLiveDetailResponse(
 				null,
 				ItemSource.GMAIL,
 				message.getId(),
 				header(message, "Subject"),
 				message.getSnippet(),
+				extractGmailBodyText(message),
 				"message/rfc822",
 				null,
 				null,
@@ -850,6 +862,7 @@ public class StorageItemService {
 				file.getId(),
 				file.getName(),
 				null,
+				null,
 				file.getMimeType(),
 				extractExtension(file.getName()),
 				null,
@@ -866,6 +879,81 @@ public class StorageItemService {
 		} catch (IOException exception) {
 			throw new CustomException(ErrorCode.GOOGLE_DRIVE_SCAN_FAILED);
 		}
+	}
+
+	private String getLiveGmailBodyText(String accessToken, String externalItemId) {
+		try {
+			return extractGmailBodyText(getFullGmailMessage(accessToken, externalItemId));
+		} catch (IOException exception) {
+			throw new CustomException(ErrorCode.GOOGLE_GMAIL_SCAN_FAILED);
+		}
+	}
+
+	private Message getFullGmailMessage(String accessToken, String externalItemId) throws IOException {
+		return createGmail(accessToken).users().messages().get(GOOGLE_USER_ID, externalItemId)
+			.setFormat("full")
+			.setFields(GMAIL_DETAIL_FIELDS)
+			.execute();
+	}
+
+	private String extractGmailBodyText(Message message) {
+		if (message.getPayload() == null) return null;
+		List<String> plainTextParts = new ArrayList<>();
+		List<String> htmlTextParts = new ArrayList<>();
+		collectGmailBodyParts(message.getPayload(), plainTextParts, htmlTextParts);
+		if (!plainTextParts.isEmpty()) {
+			return normalizeBodyText(String.join("\n\n", plainTextParts));
+		}
+		if (!htmlTextParts.isEmpty()) {
+			return normalizeBodyText(convertHtmlToText(String.join("\n\n", htmlTextParts)));
+		}
+		return null;
+	}
+
+	private void collectGmailBodyParts(MessagePart part, List<String> plainTextParts, List<String> htmlTextParts) {
+		String mimeType = part.getMimeType() == null ? "" : part.getMimeType().toLowerCase(Locale.ROOT);
+		String bodyText = decodeGmailBodyData(part.getBody() == null ? null : part.getBody().getData());
+		if (bodyText != null) {
+			if (mimeType.startsWith("text/plain")) {
+				plainTextParts.add(bodyText);
+			} else if (mimeType.startsWith("text/html")) {
+				htmlTextParts.add(bodyText);
+			}
+		}
+		if (part.getParts() == null) return;
+		part.getParts().forEach(childPart -> collectGmailBodyParts(childPart, plainTextParts, htmlTextParts));
+	}
+
+	private String decodeGmailBodyData(String data) {
+		if (data == null || data.isBlank()) return null;
+		try {
+			return new String(Base64.getUrlDecoder().decode(data), StandardCharsets.UTF_8);
+		} catch (IllegalArgumentException exception) {
+			return null;
+		}
+	}
+
+	private String convertHtmlToText(String html) {
+		String withLineBreaks = html
+			.replaceAll("(?is)<script[^>]*>.*?</script>", " ")
+			.replaceAll("(?is)<style[^>]*>.*?</style>", " ")
+			.replaceAll("(?i)<br\\s*/?>", "\n")
+			.replaceAll("(?i)</p>", "\n\n")
+			.replaceAll("(?i)</div>", "\n")
+			.replaceAll("(?is)<[^>]+>", " ");
+		return HtmlUtils.htmlUnescape(withLineBreaks);
+	}
+
+	private String normalizeBodyText(String value) {
+		if (value == null) return null;
+		String normalized = value
+			.replace("\r\n", "\n")
+			.replace('\r', '\n')
+			.replaceAll("[\\t\\x0B\\f ]+", " ")
+			.replaceAll("(?m)^\\s+", "")
+			.replaceAll("\\n{3,}", "\n\n")
+			.trim();
+		return normalized.isBlank() ? null : normalized;
 	}
 
 	private Gmail createGmail(String accessToken) {
