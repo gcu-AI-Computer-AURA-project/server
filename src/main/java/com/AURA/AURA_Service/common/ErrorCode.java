@@ -34,6 +34,7 @@ public enum ErrorCode {
 	CLEANUP_EMPTY_TARGET(HttpStatus.BAD_REQUEST, "CLEANUP-001", "정리 대상이 없습니다."),
 	CLEANUP_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "CLEANUP-002", "정리 작업을 찾을 수 없습니다."),
 	CLEANUP_EXTERNAL_ITEM_ID_REQUIRED(HttpStatus.BAD_REQUEST, "CLEANUP-003", "외부 항목 ID가 없어 처리할 수 없습니다."),
+	CLEANUP_CANCEL_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "CLEANUP-004", "취소할 수 없는 정리 작업 상태입니다."),
 	FCM_SEND_FAILED(HttpStatus.BAD_GATEWAY, "FCM-001", "FCM 알림 발송에 실패했습니다."),
 	NOTIFICATION_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-001", "알림 설정을 찾을 수 없습니다."),
 	NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION-002", "알림을 찾을 수 없습니다."),

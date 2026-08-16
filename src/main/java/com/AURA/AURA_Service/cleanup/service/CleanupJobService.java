@@ -12,6 +12,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobRunningResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobRetryFailedResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobStartResponse;
@@ -27,6 +28,7 @@ import com.AURA.AURA_Service.scan.domain.ScannedItem;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.scan.repository.AnalysisCandidateRepository;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -37,6 +39,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CleanupJobService {
+	private static final Set<CleanupJob.JobStatus> RUNNING_STATUSES = EnumSet.of(
+		CleanupJob.JobStatus.PENDING,
+		CleanupJob.JobStatus.PROCESSING
+	);
+
 	private final UserRepository userRepository;
 	private final AnalysisCandidateRepository analysisCandidateRepository;
 	private final CleanupJobRepository cleanupJobRepository;
@@ -101,6 +108,24 @@ public class CleanupJobService {
 		cleanupJob.start();
 		cleanupJobExecutionLauncher.launch(cleanupJob.getCleanupJobId());
 		return CleanupJobStartResponse.from(cleanupJob);
+	}
+
+	@Transactional(readOnly = true)
+	public CleanupJobRunningResponse getRunning(Long userId) {
+		return cleanupJobRepository.findFirstByUserUserIdAndJobStatusInOrderByCreatedAtDesc(userId, RUNNING_STATUSES)
+			.map(CleanupJobRunningResponse::from)
+			.orElseGet(CleanupJobRunningResponse::empty);
+	}
+
+	@Transactional
+	public CleanupJobDetailResponse cancel(Long userId, Long cleanupJobId) {
+		CleanupJob cleanupJob = cleanupJobRepository.findByCleanupJobIdAndUserUserId(cleanupJobId, userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+		if (!RUNNING_STATUSES.contains(cleanupJob.getJobStatus())) {
+			throw new CustomException(ErrorCode.CLEANUP_CANCEL_NOT_ALLOWED);
+		}
+		cleanupJob.cancel(LocalDateTime.now());
+		return CleanupJobDetailResponse.from(cleanupJob);
 	}
 
 	@Transactional(readOnly = true)

@@ -68,6 +68,9 @@ public class CleanupJob {
 	}
 
 	public void start() {
+		if (this.jobStatus == JobStatus.CANCELED) {
+			return;
+		}
 		this.jobStatus = JobStatus.PROCESSING;
 		this.completedAt = null;
 		this.errorMessage = null;
@@ -77,6 +80,9 @@ public class CleanupJob {
 	}
 
 	public void complete(int successItemCount, int failedItemCount, LocalDateTime completedAt) {
+		if (this.jobStatus == JobStatus.CANCELED) {
+			return;
+		}
 		this.successItemCount = successItemCount;
 		this.failedItemCount = failedItemCount;
 		this.completedAt = completedAt;
@@ -88,6 +94,29 @@ public class CleanupJob {
 		}
 		this.jobStatus = successItemCount == 0 ? JobStatus.FAILED : JobStatus.PARTIAL_FAILED;
 		this.errorMessage = "Some cleanup items failed.";
+	}
+
+	public void cancel(LocalDateTime canceledAt) {
+		if (this.jobStatus == JobStatus.COMPLETED || this.jobStatus == JobStatus.PARTIAL_FAILED
+			|| this.jobStatus == JobStatus.FAILED || this.jobStatus == JobStatus.CANCELED) {
+			return;
+		}
+		this.jobStatus = JobStatus.CANCELED;
+		this.completedAt = canceledAt;
+		this.errorMessage = null;
+	}
+
+	public void updateProcessingProgress(int successItemCount, int failedItemCount, int processedItemCount,
+		int totalItemCount) {
+		this.successItemCount = successItemCount;
+		this.failedItemCount = failedItemCount;
+		if (totalItemCount <= 0) {
+			this.progressPercent = new BigDecimal("0.00");
+			return;
+		}
+		this.progressPercent = BigDecimal.valueOf(processedItemCount)
+			.multiply(new BigDecimal("100.00"))
+			.divide(BigDecimal.valueOf(totalItemCount), 2, RoundingMode.HALF_UP);
 	}
 
 	public Long getCleanupJobId() { return cleanupJobId; }
