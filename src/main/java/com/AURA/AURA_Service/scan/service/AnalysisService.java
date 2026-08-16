@@ -19,6 +19,7 @@ import com.AURA.AURA_Service.scan.dto.SelectedCandidateResponse;
 import com.AURA.AURA_Service.scan.repository.AnalysisCandidateRepository;
 import com.AURA.AURA_Service.scan.repository.CandidateSelectionSummary;
 import com.AURA.AURA_Service.scan.repository.ScanJobRepository;
+import com.AURA.AURA_Service.storage.service.StorageItemService;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,10 +37,13 @@ public class AnalysisService {
 
 	private final ScanJobRepository scanJobRepository;
 	private final AnalysisCandidateRepository analysisCandidateRepository;
+	private final StorageItemService storageItemService;
 
-	public AnalysisService(ScanJobRepository scanJobRepository, AnalysisCandidateRepository analysisCandidateRepository) {
+	public AnalysisService(ScanJobRepository scanJobRepository, AnalysisCandidateRepository analysisCandidateRepository,
+		StorageItemService storageItemService) {
 		this.scanJobRepository = scanJobRepository;
 		this.analysisCandidateRepository = analysisCandidateRepository;
+		this.storageItemService = storageItemService;
 	}
 
 	@Transactional(readOnly = true)
@@ -63,11 +67,15 @@ public class AnalysisService {
 			itemSource, selectionStatus, resolvedIncludeProtected, resolvedSort, pageable));
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public AnalysisCandidateDetailResponse getCandidate(Long userId, Long candidateId) {
-		return analysisCandidateRepository.findDetailByCandidateIdAndUserId(candidateId, userId)
-			.map(AnalysisCandidateDetailResponse::from)
+		AnalysisCandidate candidate = analysisCandidateRepository.findDetailByCandidateIdAndUserId(candidateId, userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.ANALYSIS_CANDIDATE_NOT_FOUND));
+		String bodyText = null;
+		if (candidate.getScannedItem().getItemSource() == ItemSource.GMAIL) {
+			bodyText = storageItemService.getLiveGmailBodyText(userId, candidate.getScannedItem().getExternalItemId());
+		}
+		return AnalysisCandidateDetailResponse.from(candidate, bodyText);
 	}
 
 	@Transactional

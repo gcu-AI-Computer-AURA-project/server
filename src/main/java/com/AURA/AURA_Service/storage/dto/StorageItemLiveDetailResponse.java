@@ -10,6 +10,7 @@ public record StorageItemLiveDetailResponse(
 	@JsonProperty("external_item_id") String externalItemId,
 	String title,
 	String snippet,
+	@JsonProperty("body_text") String bodyText,
 	@JsonProperty("mime_type") String mimeType,
 	@JsonProperty("file_extension") String fileExtension,
 	@JsonProperty("folder_path") String folderPath,

@@ -25,10 +25,14 @@ public record AnalysisCandidateDetailResponse(
 	Integer selectionVersion
 ) {
 	public static AnalysisCandidateDetailResponse from(AnalysisCandidate candidate) {
+		return from(candidate, null);
+	}
+
+	public static AnalysisCandidateDetailResponse from(AnalysisCandidate candidate, String bodyText) {
 		return new AnalysisCandidateDetailResponse(
 			candidate.getCandidateId(),
 			candidate.getScanJob().getScanJobId(),
-			CandidateItemResponse.from(candidate.getScannedItem()),
+			CandidateItemResponse.from(candidate.getScannedItem(), bodyText),
 			CandidateAnalysisResponse.from(candidate),
 			candidate.getSelectionStatus(),
 			candidate.getSelectionVersion()
@@ -52,6 +56,8 @@ public record AnalysisCandidateDetailResponse(
 		@JsonProperty("label_text")
 		String labelText,
 		String snippet,
+		@JsonProperty("body_text")
+		String bodyText,
 		@JsonProperty("has_attachment")
 		boolean hasAttachment,
 		@JsonProperty("is_starred")
@@ -82,6 +88,10 @@ public record AnalysisCandidateDetailResponse(
 		boolean isTrashed
 	) {
 		public static CandidateItemResponse from(ScannedItem item) {
+			return from(item, null);
+		}
+
+		public static CandidateItemResponse from(ScannedItem item, String bodyText) {
 			return new CandidateItemResponse(
 				item.getItemId(),
 				item.getItemSource(),
@@ -92,6 +102,7 @@ public record AnalysisCandidateDetailResponse(
 				item.getSenderDomain(),
 				item.getLabelText(),
 				item.getSnippet(),
+				bodyText,
 				item.isHasAttachment(),
 				item.isStarred(),
 				item.isImportant(),
