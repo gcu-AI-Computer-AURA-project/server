@@ -43,6 +43,18 @@ public class Notification {
 		return notification;
 	}
 
+	public static Notification createCleanupCompleted(User user, Long cleanupJobId, String title, String message) {
+		Notification notification = new Notification();
+		notification.user = user;
+		notification.cleanupJobId = cleanupJobId;
+		notification.notificationType = NotificationType.CLEANUP_COMPLETED;
+		notification.title = title;
+		notification.message = message;
+		notification.targetScreen = TargetScreen.CLEANUP_RESULT;
+		notification.isRead = false;
+		return notification;
+	}
+
 	/**
 	 * 알림 읽음 처리 메소드
 	 * 읽지 않은 알림을 사용자가 확인한 시간으로 기록한다.

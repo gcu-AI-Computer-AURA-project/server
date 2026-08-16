@@ -4,6 +4,7 @@ import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateRequest;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobCreateResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobDetailResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobItemListResponse;
+import com.AURA.AURA_Service.cleanup.dto.CleanupJobRunningResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobResultResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobRetryFailedResponse;
 import com.AURA.AURA_Service.cleanup.dto.CleanupJobStartResponse;
@@ -44,6 +45,21 @@ public class CleanupJobController {
 	public ResponseEntity<ApiResponse<CleanupJobStartResponse>> start(@AuthenticationPrincipal String userId,
 		@PathVariable("cleanup_job_id") Long cleanupJobId) {
 		CleanupJobStartResponse response = cleanupJobService.start(Long.valueOf(userId), cleanupJobId);
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "진행 중인 정리 작업 조회", description = "사용자의 현재 진행 중인 정리 작업이 있으면 진행률과 상태를 반환합니다.")
+	@GetMapping("/running")
+	public ResponseEntity<ApiResponse<CleanupJobRunningResponse>> getRunning(@AuthenticationPrincipal String userId) {
+		CleanupJobRunningResponse response = cleanupJobService.getRunning(Long.valueOf(userId));
+		return ResponseEntity.ok(ApiResponse.success(response));
+	}
+
+	@Operation(summary = "정리 작업 취소", description = "진행 중인 정리 작업을 취소 상태로 변경합니다.")
+	@PostMapping("/{cleanup_job_id}/cancel")
+	public ResponseEntity<ApiResponse<CleanupJobDetailResponse>> cancel(@AuthenticationPrincipal String userId,
+		@PathVariable("cleanup_job_id") Long cleanupJobId) {
+		CleanupJobDetailResponse response = cleanupJobService.cancel(Long.valueOf(userId), cleanupJobId);
 		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 

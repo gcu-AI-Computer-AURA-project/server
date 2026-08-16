@@ -2,7 +2,6 @@ package com.AURA.AURA_Service.cleanup.service;
 
 import com.AURA.AURA_Service.auth.domain.OAuthToken;
 import com.AURA.AURA_Service.auth.domain.OAuthToken.TokenStatus;
-import com.AURA.AURA_Service.auth.domain.User;
 import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.service.GoogleOAuthClient;
 import com.AURA.AURA_Service.auth.service.GoogleOAuthClient.GoogleToken;
@@ -46,7 +45,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class CleanupJobExecutionService {
@@ -68,6 +67,8 @@ public class CleanupJobExecutionService {
 	private final TokenEncryptionService tokenEncryptionService;
 	private final GoogleOAuthClient googleOAuthClient;
 	private final JdbcTemplate jdbcTemplate;
+	private final TransactionTemplate transactionTemplate;
+	private final CleanupCompletionNotificationService cleanupCompletionNotificationService;
 
 	public CleanupJobExecutionService(CleanupJobRepository cleanupJobRepository,
 		CleanupJobItemRepository cleanupJobItemRepository,
@@ -76,7 +77,9 @@ public class CleanupJobExecutionService {
 		OAuthTokenRepository oauthTokenRepository,
 		TokenEncryptionService tokenEncryptionService,
 		GoogleOAuthClient googleOAuthClient,
-		JdbcTemplate jdbcTemplate) {
+		JdbcTemplate jdbcTemplate,
+		TransactionTemplate transactionTemplate,
+		CleanupCompletionNotificationService cleanupCompletionNotificationService) {
 		this.cleanupJobRepository = cleanupJobRepository;
 		this.cleanupJobItemRepository = cleanupJobItemRepository;
 		this.cleanupHistoryRepository = cleanupHistoryRepository;
@@ -85,55 +88,57 @@ public class CleanupJobExecutionService {
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.googleOAuthClient = googleOAuthClient;
 		this.jdbcTemplate = jdbcTemplate;
+		this.transactionTemplate = transactionTemplate;
+		this.cleanupCompletionNotificationService = cleanupCompletionNotificationService;
 	}
 
-	@Transactional
 	public void execute(Long cleanupJobId) {
-		CleanupJob cleanupJob = cleanupJobRepository.findById(cleanupJobId)
-			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
-		List<CleanupJobItem> pendingItems = cleanupJobItemRepository
-			.findByCleanupJobCleanupJobIdAndProcessStatusOrderByCleanupItemIdAsc(cleanupJobId, ProcessStatus.PENDING);
-		if (pendingItems.isEmpty()) return;
-
-		cleanupJob.start();
+		CleanupExecutionContext cleanupExecutionContext = startJob(cleanupJobId);
+		if (cleanupExecutionContext.pendingItems().isEmpty()) return;
 		GoogleToken googleToken;
 		DriveStorageQuotaSnapshot driveStorageQuotaSnapshot = DriveStorageQuotaSnapshot.empty();
 		try {
-			googleToken = refreshGoogleAccessToken(cleanupJob.getUser());
+			googleToken = refreshGoogleAccessToken(cleanupExecutionContext.userId());
 		} catch (RuntimeException exception) {
-			LocalDateTime processedAt = LocalDateTime.now();
-			pendingItems.forEach(item -> item.markFailed(exception.getMessage(), processedAt));
-			completeJob(cleanupJob, driveStorageQuotaSnapshot);
+			if (isCanceled(cleanupJobId)) return;
+			failPendingItems(cleanupJobId, exception.getMessage());
+			if (completeJob(cleanupJobId, driveStorageQuotaSnapshot)) {
+				cleanupCompletionNotificationService.notifyIfCompleted(cleanupJobId);
+			}
 			return;
 		}
 		try {
 			Gmail gmail = createGmail(googleToken.accessToken());
 			Drive drive = createDrive(googleToken.accessToken());
-			for (CleanupJobItem item : pendingItems) {
-				processItem(cleanupJob.getActionType(), item, gmail, drive);
+			for (CleanupItemWork item : cleanupExecutionContext.pendingItems()) {
+				if (isCanceled(cleanupJobId)) return;
+				CleanupItemProcessResult result = processItem(cleanupExecutionContext.actionType(), item, gmail, drive);
+				recordItemResult(cleanupJobId, item.cleanupItemId(), result);
+				if (isCanceled(cleanupJobId)) return;
 			}
-			driveStorageQuotaSnapshot = fetchDriveStorageQuota(drive, cleanupJob.getCleanupJobId());
+			if (isCanceled(cleanupJobId)) return;
+			driveStorageQuotaSnapshot = fetchDriveStorageQuota(drive, cleanupJobId);
 		} catch (RuntimeException exception) {
-			LocalDateTime processedAt = LocalDateTime.now();
-			pendingItems.stream()
-				.filter(item -> item.getProcessStatus() == ProcessStatus.PENDING)
-				.forEach(item -> item.markFailed(exception.getMessage(), processedAt));
+			if (isCanceled(cleanupJobId)) return;
+			failPendingItems(cleanupJobId, exception.getMessage());
 		}
-		completeJob(cleanupJob, driveStorageQuotaSnapshot);
+		if (completeJob(cleanupJobId, driveStorageQuotaSnapshot)) {
+			cleanupCompletionNotificationService.notifyIfCompleted(cleanupJobId);
+		}
 	}
 
-	private void processItem(ActionType actionType, CleanupJobItem item, Gmail gmail, Drive drive) {
+	private CleanupItemProcessResult processItem(ActionType actionType, CleanupItemWork item, Gmail gmail, Drive drive) {
 		LocalDateTime processedAt = LocalDateTime.now();
 		try {
 			validateExternalItemId(item);
-			if (item.getItemSource() == ItemSource.GMAIL) {
-				processGmailItem(actionType, item.getExternalItemId(), gmail);
+			if (item.itemSource() == ItemSource.GMAIL) {
+				processGmailItem(actionType, item.externalItemId(), gmail);
 			} else {
-				processDriveItem(actionType, item.getExternalItemId(), drive);
+				processDriveItem(actionType, item.externalItemId(), drive);
 			}
-			item.markSuccess(processedAt);
+			return CleanupItemProcessResult.success(processedAt);
 		} catch (RuntimeException | IOException exception) {
-			item.markFailed(exception.getMessage(), processedAt);
+			return CleanupItemProcessResult.failed(exception.getMessage(), processedAt);
 		}
 	}
 
@@ -162,6 +167,70 @@ public class CleanupJobExecutionService {
 		}
 		drive.files().delete(externalItemId)
 			.execute();
+	}
+
+	private CleanupExecutionContext startJob(Long cleanupJobId) {
+		CleanupExecutionContext cleanupExecutionContext = transactionTemplate.execute(status -> {
+			CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
+			if (cleanupJob.getJobStatus() == CleanupJob.JobStatus.CANCELED) {
+				return CleanupExecutionContext.empty();
+			}
+			List<CleanupJobItem> pendingItems = cleanupJobItemRepository
+				.findByCleanupJobCleanupJobIdAndProcessStatusOrderByCleanupItemIdAsc(cleanupJobId, ProcessStatus.PENDING);
+			if (!pendingItems.isEmpty()) {
+				cleanupJob.start();
+			}
+			return new CleanupExecutionContext(
+				cleanupJob.getUser().getUserId(),
+				cleanupJob.getActionType(),
+				pendingItems.stream()
+					.map(item -> new CleanupItemWork(item.getCleanupItemId(), item.getItemSource(), item.getExternalItemId()))
+					.toList()
+			);
+		});
+		if (cleanupExecutionContext == null) throw new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND);
+		return cleanupExecutionContext;
+	}
+
+	private void recordItemResult(Long cleanupJobId, Long cleanupItemId, CleanupItemProcessResult result) {
+		transactionTemplate.executeWithoutResult(status -> {
+			CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
+			if (cleanupJob.getJobStatus() == CleanupJob.JobStatus.CANCELED) {
+				return;
+			}
+			CleanupJobItem item = cleanupJobItemRepository.findById(cleanupItemId)
+				.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+			if (result.success()) {
+				item.markSuccess(result.processedAt());
+			} else {
+				item.markFailed(result.failureReason(), result.processedAt());
+			}
+			updateProcessingProgress(cleanupJobId);
+		});
+	}
+
+	private void failPendingItems(Long cleanupJobId, String failureReason) {
+		transactionTemplate.executeWithoutResult(status -> {
+			CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
+			if (cleanupJob.getJobStatus() == CleanupJob.JobStatus.CANCELED) {
+				return;
+			}
+			LocalDateTime processedAt = LocalDateTime.now();
+			List<CleanupJobItem> pendingItems = cleanupJobItemRepository
+				.findByCleanupJobCleanupJobIdAndProcessStatusOrderByCleanupItemIdAsc(cleanupJobId, ProcessStatus.PENDING);
+			pendingItems.forEach(item -> item.markFailed(failureReason, processedAt));
+			updateProcessingProgress(cleanupJobId);
+		});
+	}
+
+	private void updateProcessingProgress(Long cleanupJobId) {
+		CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
+		List<CleanupJobItem> items = cleanupJobItemRepository
+			.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJobId);
+		int successItemCount = countByStatus(items, ProcessStatus.SUCCESS);
+		int failedItemCount = countByStatus(items, ProcessStatus.FAILED);
+		int processedItemCount = successItemCount + failedItemCount + countByStatus(items, ProcessStatus.SKIPPED);
+		cleanupJob.updateProcessingProgress(successItemCount, failedItemCount, processedItemCount, items.size());
 	}
 
 	private DriveStorageQuotaSnapshot fetchDriveStorageQuota(Drive drive, Long cleanupJobId) {
@@ -207,16 +276,31 @@ public class CleanupJobExecutionService {
 		return totalDriveBytes == null || usageBytes == null || usageBytes <= totalDriveBytes;
 	}
 
-	private void completeJob(CleanupJob cleanupJob, DriveStorageQuotaSnapshot driveStorageQuotaSnapshot) {
-		List<CleanupJobItem> items = cleanupJobItemRepository
-			.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJob.getCleanupJobId());
-		int successItemCount = countByStatus(items, ProcessStatus.SUCCESS);
-		int failedItemCount = countByStatus(items, ProcessStatus.FAILED);
-		LocalDateTime completedAt = LocalDateTime.now();
-		cleanupJob.complete(successItemCount, failedItemCount, completedAt);
-		if (failedItemCount == 0 && successItemCount > 0 && cleanupJob.getActionType() != ActionType.RESTORE_FROM_TRASH) {
-			createCompletionHistory(cleanupJob, items, successItemCount, completedAt, driveStorageQuotaSnapshot);
-		}
+	private boolean completeJob(Long cleanupJobId, DriveStorageQuotaSnapshot driveStorageQuotaSnapshot) {
+		return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+			CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
+			if (cleanupJob.getJobStatus() == CleanupJob.JobStatus.CANCELED) {
+				return false;
+			}
+			List<CleanupJobItem> items = cleanupJobItemRepository
+				.findByCleanupJobCleanupJobIdOrderByCleanupItemIdAsc(cleanupJob.getCleanupJobId());
+			int successItemCount = countByStatus(items, ProcessStatus.SUCCESS);
+			int failedItemCount = countByStatus(items, ProcessStatus.FAILED);
+			LocalDateTime completedAt = LocalDateTime.now();
+			cleanupJob.complete(successItemCount, failedItemCount, completedAt);
+			if (failedItemCount == 0 && successItemCount > 0 && cleanupJob.getActionType() != ActionType.RESTORE_FROM_TRASH) {
+				createCompletionHistory(cleanupJob, items, successItemCount, completedAt, driveStorageQuotaSnapshot);
+			}
+			return cleanupJob.getJobStatus() == CleanupJob.JobStatus.COMPLETED
+				|| cleanupJob.getJobStatus() == CleanupJob.JobStatus.PARTIAL_FAILED;
+		}));
+	}
+
+	private boolean isCanceled(Long cleanupJobId) {
+		return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+			CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
+			return cleanupJob.getJobStatus() == CleanupJob.JobStatus.CANCELED;
+		}));
 	}
 
 	private void createCompletionHistory(CleanupJob cleanupJob, List<CleanupJobItem> items, int successItemCount,
@@ -249,15 +333,23 @@ public class CleanupJobExecutionService {
 		upsertMonthlyStatistic(cleanupJob, successItemCount, reclaimedBytes, estimatedCarbonGrams, completedAt);
 	}
 
-	private GoogleToken refreshGoogleAccessToken(User user) {
-		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
-			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_AUTH_TOKEN));
-		if (oauthToken.getTokenStatus() != TokenStatus.VALID || oauthToken.getEncryptedRefreshToken() == null
-			|| oauthToken.getEncryptedRefreshToken().isBlank()) {
-			throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
-		}
-		GoogleToken googleToken = googleOAuthClient.refreshAccessToken(tokenEncryptionService.decrypt(oauthToken.getEncryptedRefreshToken()));
-		oauthToken.update(null, googleToken.expiresIn(), googleToken.scope());
+	private GoogleToken refreshGoogleAccessToken(Long userId) {
+		String refreshToken = transactionTemplate.execute(status -> {
+			OAuthToken oauthToken = oauthTokenRepository.findByUserUserId(userId)
+				.orElseThrow(() -> new CustomException(ErrorCode.INVALID_AUTH_TOKEN));
+			if (oauthToken.getTokenStatus() != TokenStatus.VALID || oauthToken.getEncryptedRefreshToken() == null
+				|| oauthToken.getEncryptedRefreshToken().isBlank()) {
+				throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
+			}
+			return tokenEncryptionService.decrypt(oauthToken.getEncryptedRefreshToken());
+		});
+		if (refreshToken == null || refreshToken.isBlank()) throw new CustomException(ErrorCode.INVALID_AUTH_TOKEN);
+		GoogleToken googleToken = googleOAuthClient.refreshAccessToken(refreshToken);
+		transactionTemplate.executeWithoutResult(status -> {
+			OAuthToken oauthToken = oauthTokenRepository.findByUserUserId(userId)
+				.orElseThrow(() -> new CustomException(ErrorCode.INVALID_AUTH_TOKEN));
+			oauthToken.update(null, googleToken.expiresIn(), googleToken.scope());
+		});
 		return googleToken;
 	}
 
@@ -288,8 +380,13 @@ public class CleanupJobExecutionService {
 		return new HttpCredentialsAdapter(credentials);
 	}
 
-	private void validateExternalItemId(CleanupJobItem item) {
-		if (item.getExternalItemId() == null || item.getExternalItemId().isBlank()) {
+	private CleanupJob findCleanupJob(Long cleanupJobId) {
+		return cleanupJobRepository.findById(cleanupJobId)
+			.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+	}
+
+	private void validateExternalItemId(CleanupItemWork item) {
+		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
 			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
 		}
 	}
@@ -347,6 +444,25 @@ public class CleanupJobExecutionService {
 			);
 		} catch (DataAccessException exception) {
 			return;
+		}
+	}
+
+	private record CleanupExecutionContext(Long userId, ActionType actionType, List<CleanupItemWork> pendingItems) {
+		private static CleanupExecutionContext empty() {
+			return new CleanupExecutionContext(null, null, List.of());
+		}
+	}
+
+	private record CleanupItemWork(Long cleanupItemId, ItemSource itemSource, String externalItemId) {
+	}
+
+	private record CleanupItemProcessResult(boolean success, String failureReason, LocalDateTime processedAt) {
+		private static CleanupItemProcessResult success(LocalDateTime processedAt) {
+			return new CleanupItemProcessResult(true, null, processedAt);
+		}
+
+		private static CleanupItemProcessResult failed(String failureReason, LocalDateTime processedAt) {
+			return new CleanupItemProcessResult(false, failureReason, processedAt);
 		}
 	}
 
