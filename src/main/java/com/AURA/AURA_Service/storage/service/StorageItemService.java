@@ -71,7 +71,7 @@ public class StorageItemService {
 	private static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 	private static final String GMAIL_LIST_FIELDS = "nextPageToken,resultSizeEstimate,messages(id,threadId)";
 	private static final String GMAIL_MESSAGE_FIELDS = "id,threadId,labelIds,snippet,internalDate,sizeEstimate,payload(headers)";
-	private static final String DRIVE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,owners(emailAddress),trashed,trashedTime,parents,driveId";
+	private static final String DRIVE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,viewedByMeTime,shared,owners(emailAddress),trashed,trashedTime,parents,driveId,webViewLink";
 	private static final String DRIVE_LIST_FIELDS = "nextPageToken,files(" + DRIVE_FILE_FIELDS + ")";
 	private static final ZoneId KOREA_ZONE_ID = ZoneId.of("Asia/Seoul");
 	private static final int DEFAULT_PAGE = 0;
@@ -816,7 +816,9 @@ public class StorageItemService {
 				ItemSource.GMAIL,
 				message.getId(),
 				header(message, "Subject"),
+				message.getSnippet(),
 				"message/rfc822",
+				null,
 				null,
 				null,
 				toLong(message.getSizeEstimate()),
@@ -847,9 +849,11 @@ public class StorageItemService {
 				ItemSource.DRIVE,
 				file.getId(),
 				file.getName(),
+				null,
 				file.getMimeType(),
 				extractExtension(file.getName()),
 				null,
+				file.getWebViewLink(),
 				file.getSize(),
 				toLocalDateTime(file.getCreatedTime()),
 				toLocalDateTime(file.getModifiedTime()),
