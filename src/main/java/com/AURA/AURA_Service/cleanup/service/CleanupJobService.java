@@ -125,6 +125,9 @@ public class CleanupJobService {
 			throw new CustomException(ErrorCode.CLEANUP_CANCEL_NOT_ALLOWED);
 		}
 		cleanupJob.cancel(LocalDateTime.now());
+		if (cleanupJob.getScanJob() != null) {
+			cleanupJob.getScanJob().markCanceled();
+		}
 		return CleanupJobDetailResponse.from(cleanupJob);
 	}
 
