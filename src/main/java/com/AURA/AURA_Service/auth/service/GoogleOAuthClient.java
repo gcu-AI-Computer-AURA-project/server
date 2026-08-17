@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 public class GoogleOAuthClient {
 	private static final Logger LOGGER = LoggerFactory.getLogger(GoogleOAuthClient.class);
 	private static final URI TOKEN_URI = URI.create("https://oauth2.googleapis.com/token");
+	private static final URI REVOKE_URI = URI.create("https://oauth2.googleapis.com/revoke");
 	private static final URI USER_INFO_URI = URI.create("https://openidconnect.googleapis.com/v1/userinfo");
 	private static final String AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 	private final HttpClient httpClient = HttpClient.newHttpClient();
@@ -73,6 +74,25 @@ public class GoogleOAuthClient {
 			.header("Content-Type", "application/x-www-form-urlencoded")
 			.POST(HttpRequest.BodyPublishers.ofString(form)).build();
 		return send(request, GoogleToken.class, ErrorCode.DRIVE_PERMISSION_REQUIRED);
+	}
+
+	public void revokeRefreshToken(String refreshToken) {
+		if (refreshToken == null || refreshToken.isBlank()) return;
+		String form = "token=" + encode(refreshToken);
+		HttpRequest request = HttpRequest.newBuilder(REVOKE_URI)
+			.header("Content-Type", "application/x-www-form-urlencoded")
+			.POST(HttpRequest.BodyPublishers.ofString(form)).build();
+		try {
+			HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() < 200 || response.statusCode() >= 300) {
+				LOGGER.warn("Google OAuth token revoke failed. status={}", response.statusCode());
+			}
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			LOGGER.warn("Google OAuth token revoke interrupted.");
+		} catch (IOException exception) {
+			LOGGER.warn("Google OAuth token revoke failed.", exception);
+		}
 	}
 
 	public String buildAuthorizationUrl(String redirectUri, List<String> scopes) {

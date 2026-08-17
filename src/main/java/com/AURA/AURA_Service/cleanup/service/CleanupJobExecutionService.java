@@ -94,7 +94,12 @@ public class CleanupJobExecutionService {
 
 	public void execute(Long cleanupJobId) {
 		CleanupExecutionContext cleanupExecutionContext = startJob(cleanupJobId);
-		if (cleanupExecutionContext.pendingItems().isEmpty()) return;
+		if (cleanupExecutionContext.pendingItems().isEmpty()) {
+			if (isCanceled(cleanupJobId)) {
+				markPendingItemsSkipped(cleanupJobId, "Cleanup job canceled before processing.");
+			}
+			return;
+		}
 		GoogleToken googleToken;
 		DriveStorageQuotaSnapshot driveStorageQuotaSnapshot = DriveStorageQuotaSnapshot.empty();
 		try {
@@ -111,12 +116,12 @@ public class CleanupJobExecutionService {
 			Gmail gmail = createGmail(googleToken.accessToken());
 			Drive drive = createDrive(googleToken.accessToken());
 			for (CleanupItemWork item : cleanupExecutionContext.pendingItems()) {
-				if (isCanceled(cleanupJobId)) return;
+				if (handleCancellation(cleanupJobId, cleanupExecutionContext.actionType(), gmail, drive)) return;
 				CleanupItemProcessResult result = processItem(cleanupExecutionContext.actionType(), item, gmail, drive);
 				recordItemResult(cleanupJobId, item.cleanupItemId(), result);
-				if (isCanceled(cleanupJobId)) return;
+				if (handleCancellation(cleanupJobId, cleanupExecutionContext.actionType(), gmail, drive)) return;
 			}
-			if (isCanceled(cleanupJobId)) return;
+			if (handleCancellation(cleanupJobId, cleanupExecutionContext.actionType(), gmail, drive)) return;
 			driveStorageQuotaSnapshot = fetchDriveStorageQuota(drive, cleanupJobId);
 		} catch (RuntimeException exception) {
 			if (isCanceled(cleanupJobId)) return;
@@ -301,6 +306,77 @@ public class CleanupJobExecutionService {
 			CleanupJob cleanupJob = findCleanupJob(cleanupJobId);
 			return cleanupJob.getJobStatus() == CleanupJob.JobStatus.CANCELED;
 		}));
+	}
+
+	private boolean handleCancellation(Long cleanupJobId, ActionType actionType, Gmail gmail, Drive drive) {
+		if (!isCanceled(cleanupJobId)) return false;
+		rollbackCanceledMoveToTrash(cleanupJobId, actionType, gmail, drive);
+		return true;
+	}
+
+	private void rollbackCanceledMoveToTrash(Long cleanupJobId, ActionType actionType, Gmail gmail, Drive drive) {
+		if (actionType != ActionType.MOVE_TO_TRASH) {
+			markPendingItemsSkipped(cleanupJobId, "Cleanup job canceled.");
+			return;
+		}
+		List<CleanupItemWork> successfulItems = getSuccessfulItemWorks(cleanupJobId);
+		for (CleanupItemWork item : successfulItems) {
+			LocalDateTime processedAt = LocalDateTime.now();
+			try {
+				restoreMovedItem(item, gmail, drive);
+				markItemSkipped(cleanupJobId, item.cleanupItemId(), "Cleanup job canceled and reverted.", processedAt);
+			} catch (RuntimeException | IOException exception) {
+				markItemFailed(cleanupJobId, item.cleanupItemId(),
+					"Cleanup job canceled, but rollback failed: " + exception.getMessage(), processedAt);
+			}
+		}
+		markPendingItemsSkipped(cleanupJobId, "Cleanup job canceled before processing.");
+	}
+
+	private void restoreMovedItem(CleanupItemWork item, Gmail gmail, Drive drive) throws IOException {
+		validateExternalItemId(item);
+		if (item.itemSource() == ItemSource.GMAIL) {
+			gmail.users().messages().untrash(GOOGLE_USER_ID, item.externalItemId()).execute();
+			return;
+		}
+		drive.files().update(item.externalItemId(), new File().setTrashed(false))
+			.execute();
+	}
+
+	private List<CleanupItemWork> getSuccessfulItemWorks(Long cleanupJobId) {
+		return transactionTemplate.execute(status -> cleanupJobItemRepository
+			.findByCleanupJobCleanupJobIdAndProcessStatusOrderByCleanupItemIdAsc(cleanupJobId, ProcessStatus.SUCCESS)
+			.stream()
+			.map(item -> new CleanupItemWork(item.getCleanupItemId(), item.getItemSource(), item.getExternalItemId()))
+			.toList());
+	}
+
+	private void markItemSkipped(Long cleanupJobId, Long cleanupItemId, String reason, LocalDateTime processedAt) {
+		transactionTemplate.executeWithoutResult(status -> {
+			CleanupJobItem item = cleanupJobItemRepository.findById(cleanupItemId)
+				.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+			item.markSkipped(reason, processedAt);
+			updateProcessingProgress(cleanupJobId);
+		});
+	}
+
+	private void markItemFailed(Long cleanupJobId, Long cleanupItemId, String reason, LocalDateTime processedAt) {
+		transactionTemplate.executeWithoutResult(status -> {
+			CleanupJobItem item = cleanupJobItemRepository.findById(cleanupItemId)
+				.orElseThrow(() -> new CustomException(ErrorCode.CLEANUP_JOB_NOT_FOUND));
+			item.markFailed(reason, processedAt);
+			updateProcessingProgress(cleanupJobId);
+		});
+	}
+
+	private void markPendingItemsSkipped(Long cleanupJobId, String reason) {
+		transactionTemplate.executeWithoutResult(status -> {
+			LocalDateTime processedAt = LocalDateTime.now();
+			List<CleanupJobItem> pendingItems = cleanupJobItemRepository
+				.findByCleanupJobCleanupJobIdAndProcessStatusOrderByCleanupItemIdAsc(cleanupJobId, ProcessStatus.PENDING);
+			pendingItems.forEach(item -> item.markSkipped(reason, processedAt));
+			updateProcessingProgress(cleanupJobId);
+		});
 	}
 
 	private void createCompletionHistory(CleanupJob cleanupJob, List<CleanupJobItem> items, int successItemCount,
