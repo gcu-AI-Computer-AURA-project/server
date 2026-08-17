@@ -31,7 +31,7 @@ public class GooglePermissionService {
 	private static final String OPENID_SCOPE = "openid";
 	private static final String EMAIL_SCOPE = "email";
 	private static final String PROFILE_SCOPE = "profile";
-	private static final String GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+	private static final String GMAIL_SCOPE = "https://mail.google.com/";
 	private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 	private final UserRepository userRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
@@ -72,7 +72,7 @@ public class GooglePermissionService {
 		String scopeText = googleToken.scope() == null ? oauthToken.getScopeText() : googleToken.scope();
 		oauthToken.update(null, googleToken.expiresIn(), scopeText);
 		LocalDateTime checkedAt = LocalDateTime.now();
-		PermissionStatus gmailStatus = syncRecheckedPermission(user, ServiceType.GMAIL, hasScope(scopeText, "gmail"), scopeText, checkedAt);
+		PermissionStatus gmailStatus = syncRecheckedPermission(user, ServiceType.GMAIL, hasGmailScope(scopeText), scopeText, checkedAt);
 		PermissionStatus driveStatus = syncRecheckedPermission(user, ServiceType.DRIVE, hasScope(scopeText, "drive"), scopeText, checkedAt);
 		return new GooglePermissionRecheckResponse(gmailStatus, driveStatus, checkedAt);
 	}
@@ -106,7 +106,7 @@ public class GooglePermissionService {
 	@Transactional
 	public void syncConnectedPermissions(User user, String scopeText) {
 		LocalDateTime checkedAt = LocalDateTime.now();
-		syncPermission(user, ServiceType.GMAIL, hasScope(scopeText, "gmail"), scopeText, checkedAt);
+		syncPermission(user, ServiceType.GMAIL, hasGmailScope(scopeText), scopeText, checkedAt);
 		syncPermission(user, ServiceType.DRIVE, hasScope(scopeText, "drive"), scopeText, checkedAt);
 	}
 
@@ -144,6 +144,10 @@ public class GooglePermissionService {
 
 	private boolean hasScope(String scopeText, String keyword) {
 		return scopeText != null && scopeText.toLowerCase().contains(keyword);
+	}
+
+	private boolean hasGmailScope(String scopeText) {
+		return hasScope(scopeText, "gmail") || hasScope(scopeText, "mail.google.com");
 	}
 
 	private void validateRedirectUri(String redirectUri) {
