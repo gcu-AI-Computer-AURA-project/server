@@ -87,6 +87,12 @@ public class CleanupJobItem {
 		this.processedAt = processedAt;
 	}
 
+	public void markSkipped(String failureReason, LocalDateTime processedAt) {
+		this.processStatus = ProcessStatus.SKIPPED;
+		this.failureReason = trimFailureReason(failureReason);
+		this.processedAt = processedAt;
+	}
+
 	public Long getCleanupItemId() { return cleanupItemId; }
 	public ItemSource getItemSource() { return itemSource; }
 	public String getExternalItemId() { return externalItemId; }

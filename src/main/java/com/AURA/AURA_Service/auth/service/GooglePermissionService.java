@@ -92,7 +92,12 @@ public class GooglePermissionService {
 			throw new CustomException(ErrorCode.USER_ALREADY_WITHDRAWN);
 		}
 		LocalDateTime disconnectedAt = LocalDateTime.now();
-		oauthTokenRepository.findByUser(user).ifPresent(token -> token.revoke(disconnectedAt));
+		oauthTokenRepository.findByUser(user).ifPresent(token -> {
+			if (token.getEncryptedRefreshToken() != null && !token.getEncryptedRefreshToken().isBlank()) {
+				googleOAuthClient.revokeRefreshToken(tokenEncryptionService.decrypt(token.getEncryptedRefreshToken()));
+			}
+			token.revoke(disconnectedAt);
+		});
 		disconnectAll(user, disconnectedAt);
 		user.disconnectGoogle();
 		return GoogleConnectionDisconnectResponse.disconnected();
