@@ -708,6 +708,9 @@ public class StorageItemService {
 	}
 
 	private void validateRestoreRequest(StorageTrashRestoreRequest request) {
+		if (request == null || request.items() == null || request.items().isEmpty()) {
+			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
+		}
 		if (!Boolean.TRUE.equals(request.approvalConfirmed())) {
 			throw new CustomException(ErrorCode.CLEANUP_EMPTY_TARGET);
 		}
@@ -723,9 +726,6 @@ public class StorageItemService {
 		}
 		if (item.externalItemId() == null || item.externalItemId().isBlank()) {
 			throw new CustomException(ErrorCode.CLEANUP_EXTERNAL_ITEM_ID_REQUIRED);
-		}
-		if (item.snapshotTitle() == null || item.snapshotTitle().isBlank()) {
-			throw new CustomException(ErrorCode.INVALID_INPUT);
 		}
 		if (item.snapshotSizeBytes() != null && item.snapshotSizeBytes() < 0) {
 			throw new CustomException(ErrorCode.INVALID_INPUT);
@@ -744,7 +744,7 @@ public class StorageItemService {
 				findOptionalScannedItem(userId, item),
 				item.itemSource(),
 				item.externalItemId().trim(),
-				item.snapshotTitle(),
+				resolveSnapshotTitle(item.snapshotTitle(), item.externalItemId()),
 				defaultZero(item.snapshotSizeBytes())
 			))
 			.toList();
@@ -752,12 +752,9 @@ public class StorageItemService {
 
 	private ScannedItem findOptionalScannedItem(Long userId, StorageTrashRestoreRequest.ItemRequest item) {
 		if (item.itemId() == null) return null;
-		ScannedItem scannedItem = scannedItemRepository.findDetailByItemIdAndUserId(item.itemId(), userId)
-			.orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
-		if (scannedItem.getItemSource() != item.itemSource()) {
-			throw new CustomException(ErrorCode.INVALID_INPUT);
-		}
-		return scannedItem;
+		return scannedItemRepository.findDetailByItemIdAndUserId(item.itemId(), userId)
+			.filter(scannedItem -> scannedItem.getItemSource() == item.itemSource())
+			.orElse(null);
 	}
 
 	private int countRestoreItemsBySource(List<StorageTrashRestoreRequest.ItemRequest> items, ItemSource itemSource) {
