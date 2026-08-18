@@ -12,6 +12,7 @@ import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.Notification;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -35,9 +36,15 @@ public class FcmSendService {
 	public List<String> sendToUser(Long userId, String title, String message, Map<String, String> data) {
 		User user = findUser(userId);
 		List<FcmToken> fcmTokens = fcmTokenRepository.findByUserAndIsActiveTrue(user);
-		return fcmTokens.stream()
-			.map(fcmToken -> sendAndMarkUsed(fcmToken, title, message, data))
-			.toList();
+		List<String> messageIds = new ArrayList<>();
+		for (FcmToken fcmToken : fcmTokens) {
+			try {
+				messageIds.add(sendAndMarkUsed(fcmToken, title, message, data));
+			} catch (CustomException exception) {
+				LOGGER.warn("FCM token send failed. fcmTokenId={}", fcmToken.getFcmTokenId(), exception);
+			}
+		}
+		return messageIds;
 	}
 
 	public String sendToToken(String fcmToken, String title, String message, Map<String, String> data) {

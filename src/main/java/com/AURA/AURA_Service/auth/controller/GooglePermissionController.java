@@ -4,6 +4,8 @@ import com.AURA.AURA_Service.auth.dto.GooglePermissionRecheckResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlRequest;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionResponse;
+import com.AURA.AURA_Service.auth.dto.GooglePermissionUpdateRequest;
+import com.AURA.AURA_Service.auth.domain.GooglePermission.ServiceType;
 import com.AURA.AURA_Service.auth.service.GooglePermissionService;
 import com.AURA.AURA_Service.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +13,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,5 +46,15 @@ public class GooglePermissionController {
 	public ResponseEntity<ApiResponse<GooglePermissionReconnectUrlResponse>> createReconnectUrl(
 		@Valid @RequestBody GooglePermissionReconnectUrlRequest request) {
 		return ResponseEntity.ok(ApiResponse.success(googlePermissionService.createReconnectUrl(request)));
+	}
+
+	@Operation(summary = "Google 서비스별 앱 접근 상태 변경", description = "사용자가 AURA 앱 안에서 Gmail 또는 Drive 접근 사용 여부를 변경합니다.")
+	@PatchMapping("/{service_type}")
+	public ResponseEntity<ApiResponse<GooglePermissionResponse>> updateServiceConnection(
+		@AuthenticationPrincipal String userId,
+		@PathVariable("service_type") ServiceType serviceType,
+		@Valid @RequestBody GooglePermissionUpdateRequest request) {
+		return ResponseEntity.ok(ApiResponse.success(
+			googlePermissionService.updateServiceConnection(Long.valueOf(userId), serviceType, request)));
 	}
 }

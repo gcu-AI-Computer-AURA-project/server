@@ -1,8 +1,12 @@
 package com.AURA.AURA_Service.storage.service;
 
+import com.AURA.AURA_Service.auth.domain.GooglePermission;
+import com.AURA.AURA_Service.auth.domain.GooglePermission.PermissionStatus;
+import com.AURA.AURA_Service.auth.domain.GooglePermission.ServiceType;
 import com.AURA.AURA_Service.auth.domain.OAuthToken;
 import com.AURA.AURA_Service.auth.domain.OAuthToken.TokenStatus;
 import com.AURA.AURA_Service.auth.domain.User;
+import com.AURA.AURA_Service.auth.repository.GooglePermissionRepository;
 import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.auth.service.GoogleOAuthClient;
@@ -88,6 +92,7 @@ public class StorageItemService {
 
 	private final UserRepository userRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
+	private final GooglePermissionRepository googlePermissionRepository;
 	private final TokenEncryptionService tokenEncryptionService;
 	private final GoogleOAuthClient googleOAuthClient;
 	private final ScannedItemRepository scannedItemRepository;
@@ -96,12 +101,14 @@ public class StorageItemService {
 	private final CleanupJobExecutionLauncher cleanupJobExecutionLauncher;
 
 	public StorageItemService(UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
-		TokenEncryptionService tokenEncryptionService, GoogleOAuthClient googleOAuthClient,
+		GooglePermissionRepository googlePermissionRepository, TokenEncryptionService tokenEncryptionService,
+		GoogleOAuthClient googleOAuthClient,
 		ScannedItemRepository scannedItemRepository, CleanupJobRepository cleanupJobRepository,
 		CleanupJobItemRepository cleanupJobItemRepository,
 		CleanupJobExecutionLauncher cleanupJobExecutionLauncher) {
 		this.userRepository = userRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
+		this.googlePermissionRepository = googlePermissionRepository;
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.googleOAuthClient = googleOAuthClient;
 		this.scannedItemRepository = scannedItemRepository;
@@ -168,6 +175,7 @@ public class StorageItemService {
 		int normalizedSize = normalizeSize(size);
 		if (itemSource == null) {
 			GoogleToken googleToken = refreshGoogleAccessToken(userId, ItemSource.GMAIL);
+			validateGooglePermission(userId, ItemSource.DRIVE);
 			StorageTrashPageResponse gmailResponse = getLiveGmailTrashItems(userId, googleToken.accessToken(),
 				normalizedPage, normalizedSize);
 			StorageTrashPageResponse driveResponse = getLiveDriveTrashItems(userId, googleToken.accessToken(),
@@ -195,6 +203,7 @@ public class StorageItemService {
 		validatePermanentDeleteRequest(request);
 		User user = userRepository.findById(userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		validatePermanentDeleteItemPermissions(user, request.items());
 		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.PERMANENT_DELETE,
 			countBySource(request.items(), ItemSource.GMAIL),
 			countBySource(request.items(), ItemSource.DRIVE),
@@ -211,6 +220,7 @@ public class StorageItemService {
 		validateMoveToTrashRequest(request);
 		User user = userRepository.findById(userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		validateMoveItemPermissions(user, request.items());
 		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.MOVE_TO_TRASH,
 			countMoveItemsBySource(request.items(), ItemSource.GMAIL),
 			countMoveItemsBySource(request.items(), ItemSource.DRIVE),
@@ -227,6 +237,7 @@ public class StorageItemService {
 		validateRestoreRequest(request);
 		User user = userRepository.findById(userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		validateRestoreItemPermissions(user, request.items());
 		CleanupJob cleanupJob = cleanupJobRepository.save(CleanupJob.create(user, null, ActionType.RESTORE_FROM_TRASH,
 			countRestoreItemsBySource(request.items(), ItemSource.GMAIL),
 			countRestoreItemsBySource(request.items(), ItemSource.DRIVE),
@@ -243,6 +254,7 @@ public class StorageItemService {
 		validateEmptyTrashRequest(request);
 		User user = userRepository.findById(userId)
 			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		validateTargetSourcePermissions(user, request.targetSource());
 		GoogleToken googleToken = refreshGoogleAccessToken(userId, firstItemSource(request.targetSource()));
 		List<StorageTrashItemResponse> trashItems = collectLiveTrashItems(userId, googleToken.accessToken(),
 			request.targetSource());
@@ -276,6 +288,7 @@ public class StorageItemService {
 		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
 			.orElseThrow(() -> new CustomException(resolvePermissionError(itemSource)));
 		validateToken(oauthToken, itemSource);
+		validateGooglePermission(user, oauthToken, itemSource);
 		GoogleToken googleToken = googleOAuthClient.refreshAccessToken(tokenEncryptionService.decrypt(oauthToken.getEncryptedRefreshToken()));
 		oauthToken.update(null, googleToken.expiresIn(), googleToken.scope());
 		return googleToken;
@@ -817,6 +830,93 @@ public class StorageItemService {
 			|| oauthToken.getEncryptedRefreshToken().isBlank()) {
 			throw new CustomException(resolvePermissionError(itemSource));
 		}
+	}
+
+	private void validateGooglePermission(Long userId, ItemSource itemSource) {
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
+			.orElseThrow(() -> new CustomException(resolvePermissionError(itemSource)));
+		validateToken(oauthToken, itemSource);
+		validateGooglePermission(user, oauthToken, itemSource);
+	}
+
+	private void validateGooglePermission(User user, OAuthToken oauthToken, ItemSource itemSource) {
+		ServiceType serviceType = toServiceType(itemSource);
+		GooglePermission permission = googlePermissionRepository.findByUserAndServiceType(user, serviceType)
+			.orElseGet(() -> createPermissionFromToken(user, oauthToken, serviceType));
+		if (permission.getPermissionStatus() != PermissionStatus.CONNECTED) {
+			throw new CustomException(resolvePermissionError(itemSource));
+		}
+	}
+
+	private GooglePermission createPermissionFromToken(User user, OAuthToken oauthToken, ServiceType serviceType) {
+		GooglePermission permission = GooglePermission.create(user, serviceType);
+		LocalDateTime checkedAt = LocalDateTime.now();
+		if (hasServiceScope(oauthToken.getScopeText(), serviceType)) {
+			permission.connect(oauthToken.getScopeText(), checkedAt);
+		} else {
+			permission.requireReconnect(oauthToken.getScopeText(), checkedAt);
+		}
+		return googlePermissionRepository.save(permission);
+	}
+
+	private void validatePermanentDeleteItemPermissions(User user, List<StoragePermanentDeleteRequest.ItemRequest> items) {
+		Set<ItemSource> itemSources = new HashSet<>();
+		items.forEach(item -> itemSources.add(item.itemSource()));
+		validateItemSourcePermissions(user, itemSources);
+	}
+
+	private void validateMoveItemPermissions(User user, List<StorageMoveToTrashRequest.ItemRequest> items) {
+		Set<ItemSource> itemSources = new HashSet<>();
+		items.forEach(item -> itemSources.add(item.itemSource()));
+		validateItemSourcePermissions(user, itemSources);
+	}
+
+	private void validateRestoreItemPermissions(User user, List<StorageTrashRestoreRequest.ItemRequest> items) {
+		Set<ItemSource> itemSources = new HashSet<>();
+		items.forEach(item -> itemSources.add(item.itemSource()));
+		validateItemSourcePermissions(user, itemSources);
+	}
+
+	private void validateTargetSourcePermissions(User user, TargetSource targetSource) {
+		Set<ItemSource> itemSources = new HashSet<>();
+		if (targetSource == TargetSource.GMAIL || targetSource == TargetSource.ALL) {
+			itemSources.add(ItemSource.GMAIL);
+		}
+		if (targetSource == TargetSource.DRIVE || targetSource == TargetSource.ALL) {
+			itemSources.add(ItemSource.DRIVE);
+		}
+		validateItemSourcePermissions(user, itemSources);
+	}
+
+	private void validateItemSourcePermissions(User user, Set<ItemSource> itemSources) {
+		if (itemSources.isEmpty()) {
+			return;
+		}
+		ItemSource firstItemSource = itemSources.iterator().next();
+		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
+			.orElseThrow(() -> new CustomException(resolvePermissionError(firstItemSource)));
+		itemSources.forEach(itemSource -> {
+			validateToken(oauthToken, itemSource);
+			validateGooglePermission(user, oauthToken, itemSource);
+		});
+	}
+
+	private ServiceType toServiceType(ItemSource itemSource) {
+		return itemSource == ItemSource.GMAIL ? ServiceType.GMAIL : ServiceType.DRIVE;
+	}
+
+	private boolean hasServiceScope(String scopeText, ServiceType serviceType) {
+		return serviceType == ServiceType.GMAIL ? hasGmailScope(scopeText) : hasScope(scopeText, "drive");
+	}
+
+	private boolean hasGmailScope(String scopeText) {
+		return hasScope(scopeText, "gmail") || hasScope(scopeText, "mail.google.com");
+	}
+
+	private boolean hasScope(String scopeText, String keyword) {
+		return scopeText != null && scopeText.toLowerCase(Locale.ROOT).contains(keyword);
 	}
 
 	private StorageItemLiveDetailResponse getLiveGmailDetail(String accessToken, String externalItemId) {
