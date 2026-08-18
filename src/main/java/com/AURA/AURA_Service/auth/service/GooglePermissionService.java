@@ -12,6 +12,7 @@ import com.AURA.AURA_Service.auth.dto.GooglePermissionRecheckResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlRequest;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionReconnectUrlResponse;
 import com.AURA.AURA_Service.auth.dto.GooglePermissionResponse;
+import com.AURA.AURA_Service.auth.dto.GooglePermissionUpdateRequest;
 import com.AURA.AURA_Service.auth.repository.GooglePermissionRepository;
 import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
@@ -77,6 +78,33 @@ public class GooglePermissionService {
 		return new GooglePermissionRecheckResponse(gmailStatus, driveStatus, checkedAt);
 	}
 
+	@Transactional
+	public GooglePermissionResponse updateServiceConnection(Long userId, ServiceType serviceType,
+		GooglePermissionUpdateRequest request) {
+		User user = userRepository.findById(userId)
+			.orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
+			.orElseThrow(() -> new CustomException(ErrorCode.GOOGLE_AUTHENTICATION_FAILED));
+		LocalDateTime checkedAt = LocalDateTime.now();
+		GooglePermission permission = googlePermissionRepository.findByUserAndServiceType(user, serviceType)
+			.orElseGet(() -> GooglePermission.create(user, serviceType));
+
+		if (Boolean.TRUE.equals(request.isConnected())) {
+			if (oauthToken.getTokenStatus() == TokenStatus.REVOKED || oauthToken.getEncryptedRefreshToken() == null) {
+				permission.requireReconnect(oauthToken.getScopeText(), checkedAt);
+			} else if (hasServiceScope(oauthToken.getScopeText(), serviceType)) {
+				permission.connect(oauthToken.getScopeText(), checkedAt);
+			} else {
+				permission.requireReconnect(oauthToken.getScopeText(), checkedAt);
+			}
+		} else {
+			permission.disconnect(checkedAt);
+		}
+
+		googlePermissionRepository.save(permission);
+		return GooglePermissionResponse.from(googlePermissionRepository.findByUserOrderByServiceTypeAsc(user));
+	}
+
 	public GooglePermissionReconnectUrlResponse createReconnectUrl(GooglePermissionReconnectUrlRequest request) {
 		validateRedirectUri(request.redirectUri());
 		List<String> scopes = createScopes(request.serviceTypes());
@@ -133,6 +161,11 @@ public class GooglePermissionService {
 		String scopeText, LocalDateTime checkedAt) {
 		GooglePermission permission = googlePermissionRepository.findByUserAndServiceType(user, serviceType)
 			.orElseGet(() -> GooglePermission.create(user, serviceType));
+		if (permission.getPermissionStatus() == PermissionStatus.DISCONNECTED && isConnected) {
+			permission.disconnect(checkedAt);
+			googlePermissionRepository.save(permission);
+			return permission.getPermissionStatus();
+		}
 		if (isConnected) {
 			permission.connect(scopeText, checkedAt);
 		} else {
@@ -148,6 +181,10 @@ public class GooglePermissionService {
 
 	private boolean hasGmailScope(String scopeText) {
 		return hasScope(scopeText, "gmail") || hasScope(scopeText, "mail.google.com");
+	}
+
+	private boolean hasServiceScope(String scopeText, ServiceType serviceType) {
+		return serviceType == ServiceType.GMAIL ? hasGmailScope(scopeText) : hasScope(scopeText, "drive");
 	}
 
 	private void validateRedirectUri(String redirectUri) {

@@ -1,8 +1,12 @@
 package com.AURA.AURA_Service.scan.service;
 
+import com.AURA.AURA_Service.auth.domain.GooglePermission;
+import com.AURA.AURA_Service.auth.domain.GooglePermission.PermissionStatus;
+import com.AURA.AURA_Service.auth.domain.GooglePermission.ServiceType;
 import com.AURA.AURA_Service.auth.domain.OAuthToken;
 import com.AURA.AURA_Service.auth.domain.OAuthToken.TokenStatus;
 import com.AURA.AURA_Service.auth.domain.User;
+import com.AURA.AURA_Service.auth.repository.GooglePermissionRepository;
 import com.AURA.AURA_Service.auth.repository.OAuthTokenRepository;
 import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.auth.service.GoogleOAuthClient;
@@ -29,6 +33,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,13 +47,16 @@ public class DriveFolderService {
 
 	private final UserRepository userRepository;
 	private final OAuthTokenRepository oauthTokenRepository;
+	private final GooglePermissionRepository googlePermissionRepository;
 	private final TokenEncryptionService tokenEncryptionService;
 	private final GoogleOAuthClient googleOAuthClient;
 
 	public DriveFolderService(UserRepository userRepository, OAuthTokenRepository oauthTokenRepository,
-		TokenEncryptionService tokenEncryptionService, GoogleOAuthClient googleOAuthClient) {
+		GooglePermissionRepository googlePermissionRepository, TokenEncryptionService tokenEncryptionService,
+		GoogleOAuthClient googleOAuthClient) {
 		this.userRepository = userRepository;
 		this.oauthTokenRepository = oauthTokenRepository;
+		this.googlePermissionRepository = googlePermissionRepository;
 		this.tokenEncryptionService = tokenEncryptionService;
 		this.googleOAuthClient = googleOAuthClient;
 	}
@@ -59,6 +67,7 @@ public class DriveFolderService {
 		OAuthToken oauthToken = oauthTokenRepository.findByUser(user)
 			.orElseThrow(() -> new CustomException(ErrorCode.DRIVE_PERMISSION_REQUIRED));
 		validateToken(oauthToken);
+		validateDrivePermission(user, oauthToken);
 
 		String refreshToken = tokenEncryptionService.decrypt(oauthToken.getEncryptedRefreshToken());
 		GoogleToken googleToken = googleOAuthClient.refreshAccessToken(refreshToken);
@@ -85,6 +94,29 @@ public class DriveFolderService {
 		if (oauthToken.getTokenStatus() != TokenStatus.VALID || isBlank(oauthToken.getEncryptedRefreshToken())) {
 			throw new CustomException(ErrorCode.DRIVE_PERMISSION_REQUIRED);
 		}
+	}
+
+	private void validateDrivePermission(User user, OAuthToken oauthToken) {
+		GooglePermission permission = googlePermissionRepository.findByUserAndServiceType(user, ServiceType.DRIVE)
+			.orElseGet(() -> createDrivePermissionFromToken(user, oauthToken));
+		if (permission.getPermissionStatus() != PermissionStatus.CONNECTED) {
+			throw new CustomException(ErrorCode.DRIVE_PERMISSION_REQUIRED);
+		}
+	}
+
+	private GooglePermission createDrivePermissionFromToken(User user, OAuthToken oauthToken) {
+		GooglePermission permission = GooglePermission.create(user, ServiceType.DRIVE);
+		LocalDateTime checkedAt = LocalDateTime.now();
+		if (hasScope(oauthToken.getScopeText(), "drive")) {
+			permission.connect(oauthToken.getScopeText(), checkedAt);
+		} else {
+			permission.requireReconnect(oauthToken.getScopeText(), checkedAt);
+		}
+		return googlePermissionRepository.save(permission);
+	}
+
+	private boolean hasScope(String scopeText, String keyword) {
+		return scopeText != null && scopeText.toLowerCase(Locale.ROOT).contains(keyword);
 	}
 
 	private Drive createDrive(String accessToken) {
