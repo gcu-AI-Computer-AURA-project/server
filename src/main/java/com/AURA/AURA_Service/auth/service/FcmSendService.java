@@ -7,6 +7,8 @@ import com.AURA.AURA_Service.auth.repository.UserRepository;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
 import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class FcmSendService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(FcmSendService.class);
+	private static final String AURA_NOTIFICATION_CHANNEL_ID = "aura-high-priority";
 
 	private final UserRepository userRepository;
 	private final FcmTokenRepository fcmTokenRepository;
@@ -66,6 +69,17 @@ public class FcmSendService {
 			.setNotification(Notification.builder()
 				.setTitle(title)
 				.setBody(message)
+				.build())
+			.setAndroidConfig(AndroidConfig.builder()
+				.setPriority(AndroidConfig.Priority.HIGH)
+				.setNotification(AndroidNotification.builder()
+					.setTitle(title)
+					.setBody(message)
+					.setChannelId(AURA_NOTIFICATION_CHANNEL_ID)
+					.setPriority(AndroidNotification.Priority.MAX)
+					.setDefaultSound(true)
+					.setDefaultVibrateTimings(true)
+					.build())
 				.build());
 		if (data != null && !data.isEmpty()) {
 			messageBuilder.putAllData(data);
