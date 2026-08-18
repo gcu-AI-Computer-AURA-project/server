@@ -9,6 +9,7 @@ import com.AURA.AURA_Service.auth.repository.NotificationRepository;
 import com.AURA.AURA_Service.auth.repository.NotificationSettingRepository;
 import com.AURA.AURA_Service.auth.service.FcmSendService;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJob;
+import com.AURA.AURA_Service.cleanup.domain.CleanupJob.ActionType;
 import com.AURA.AURA_Service.cleanup.domain.CleanupJob.JobStatus;
 import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
 import java.util.Map;
@@ -37,7 +38,7 @@ public class CleanupCompletionNotificationService {
 	public void notifyIfCompleted(Long cleanupJobId) {
 		try {
 			CleanupJob cleanupJob = cleanupJobRepository.findById(cleanupJobId).orElse(null);
-			if (cleanupJob == null || !isNotificationTarget(cleanupJob.getJobStatus())) return;
+			if (cleanupJob == null || !isNotificationTarget(cleanupJob)) return;
 			User user = cleanupJob.getUser();
 			if (!isCleanupCompleteNotificationEnabled(user)) return;
 
@@ -50,7 +51,9 @@ public class CleanupCompletionNotificationService {
 		}
 	}
 
-	private boolean isNotificationTarget(JobStatus jobStatus) {
+	private boolean isNotificationTarget(CleanupJob cleanupJob) {
+		if (cleanupJob.getActionType() != ActionType.MOVE_TO_TRASH || cleanupJob.getScanJobId() == null) return false;
+		JobStatus jobStatus = cleanupJob.getJobStatus();
 		return jobStatus == JobStatus.COMPLETED || jobStatus == JobStatus.PARTIAL_FAILED;
 	}
 
