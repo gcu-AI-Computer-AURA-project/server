@@ -24,6 +24,7 @@ import com.AURA.AURA_Service.cleanup.repository.CleanupJobRepository;
 import com.AURA.AURA_Service.cleanup.service.CleanupJobExecutionLauncher;
 import com.AURA.AURA_Service.common.CustomException;
 import com.AURA.AURA_Service.common.ErrorCode;
+import com.AURA.AURA_Service.scan.domain.ScannedItem;
 import com.AURA.AURA_Service.scan.domain.ScannedItem.ItemSource;
 import com.AURA.AURA_Service.scan.repository.ScannedItemRepository;
 import com.AURA.AURA_Service.storage.dto.StorageTrashRestoreRequest;
@@ -117,6 +118,39 @@ class StorageItemServiceTest {
 		assertThat(savedItems.get(0).getSnapshotTitle()).isEqualTo("gmail-message-1");
 		assertThat(savedItems.get(1).getSnapshotTitle()).isEqualTo("Drive file");
 		verify(cleanupJobExecutionLauncher).launch(24L);
+	}
+
+	@Test
+	void restoreTrashItemsPrefersScannedItemExternalId() {
+		User user = userWithConnectedPermissions();
+		ScannedItem scannedItem = mock(ScannedItem.class);
+		when(scannedItem.getItemSource()).thenReturn(ItemSource.GMAIL);
+		when(scannedItem.getExternalItemId()).thenReturn("real-gmail-message-id");
+		when(scannedItem.getTitle()).thenReturn("Real Gmail title");
+		when(scannedItem.getEstimatedReclaimBytes()).thenReturn(15L);
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(scannedItemRepository.findDetailByItemIdAndUserId(100L, 1L)).thenReturn(Optional.of(scannedItem));
+		when(cleanupJobRepository.save(any(CleanupJob.class))).thenAnswer(invocation -> {
+			CleanupJob cleanupJob = invocation.getArgument(0);
+			ReflectionTestUtils.setField(cleanupJob, "cleanupJobId", 25L);
+			return cleanupJob;
+		});
+
+		StorageTrashRestoreRequest request = new StorageTrashRestoreRequest(
+			List.of(new StorageTrashRestoreRequest.ItemRequest(ItemSource.GMAIL, "100", 100L, null, null)),
+			true
+		);
+
+		storageItemService.restoreTrashItems(1L, request);
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<CleanupJobItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+		verify(cleanupJobItemRepository).saveAll(itemsCaptor.capture());
+		CleanupJobItem savedItem = itemsCaptor.getValue().get(0);
+		assertThat(savedItem.getExternalItemId()).isEqualTo("real-gmail-message-id");
+		assertThat(savedItem.getSnapshotTitle()).isEqualTo("Real Gmail title");
+		assertThat(savedItem.getSnapshotSizeBytes()).isEqualTo(15L);
+		verify(cleanupJobExecutionLauncher).launch(25L);
 	}
 
 	@Test

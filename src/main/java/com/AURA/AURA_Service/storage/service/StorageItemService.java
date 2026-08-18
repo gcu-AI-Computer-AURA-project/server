@@ -739,15 +739,46 @@ public class StorageItemService {
 	private List<CleanupJobItem> createRestoreItems(CleanupJob cleanupJob, Long userId,
 		List<StorageTrashRestoreRequest.ItemRequest> items) {
 		return items.stream()
-			.map(item -> CleanupJobItem.directSnapshot(
-				cleanupJob,
-				findOptionalScannedItem(userId, item),
-				item.itemSource(),
-				item.externalItemId().trim(),
-				resolveSnapshotTitle(item.snapshotTitle(), item.externalItemId()),
-				defaultZero(item.snapshotSizeBytes())
-			))
+			.map(item -> {
+				ScannedItem scannedItem = findOptionalScannedItem(userId, item);
+				String externalItemId = resolveRestoreExternalItemId(item, scannedItem);
+				return CleanupJobItem.directSnapshot(
+					cleanupJob,
+					scannedItem,
+					item.itemSource(),
+					externalItemId,
+					resolveRestoreSnapshotTitle(item, scannedItem, externalItemId),
+					resolveRestoreSnapshotBytes(item, scannedItem)
+				);
+			})
 			.toList();
+	}
+
+	private String resolveRestoreExternalItemId(StorageTrashRestoreRequest.ItemRequest item, ScannedItem scannedItem) {
+		if (scannedItem != null) {
+			String scannedExternalItemId = scannedItem.getExternalItemId();
+			if (scannedExternalItemId != null && !scannedExternalItemId.isBlank()) {
+				return scannedExternalItemId.trim();
+			}
+		}
+		return item.externalItemId().trim();
+	}
+
+	private String resolveRestoreSnapshotTitle(StorageTrashRestoreRequest.ItemRequest item, ScannedItem scannedItem,
+		String externalItemId) {
+		if (item.snapshotTitle() != null && !item.snapshotTitle().isBlank()) return item.snapshotTitle();
+		if (scannedItem != null) {
+			String scannedTitle = scannedItem.getTitle();
+			if (scannedTitle != null && !scannedTitle.isBlank()) {
+				return scannedTitle;
+			}
+		}
+		return externalItemId;
+	}
+
+	private long resolveRestoreSnapshotBytes(StorageTrashRestoreRequest.ItemRequest item, ScannedItem scannedItem) {
+		if (item.snapshotSizeBytes() != null) return defaultZero(item.snapshotSizeBytes());
+		return scannedItem == null ? 0L : scannedItem.getEstimatedReclaimBytes();
 	}
 
 	private ScannedItem findOptionalScannedItem(Long userId, StorageTrashRestoreRequest.ItemRequest item) {
